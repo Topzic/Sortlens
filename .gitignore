@@ -1,0 +1,56 @@
+# Sortlens
+.sortlens/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/venv/
+backend/.venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.pytest_cache/
+.ruff_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+backend/dist/
+backend/build/
+backend/static/
+backend/*.ico
+*.egg-info/
+Sortlens-windows-x64.zip
+installer/output/
+installer/prerequisites/
+
+# Test
+coverage/
+.coverage
+htmlcov/

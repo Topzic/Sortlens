@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet map cluster icons - remove default leaflet div icon background */
+.map-cluster-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Ensure leaflet containers fill their parent */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+}
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: #213547;
+  background-color: #f9fafb;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dark {
+  color: #e2e8f0;
+  background-color: #0f1729;
+}
+
+/* VS Code Dark+ theme overrides */
+.darkplus {
+  color: #d4d4d4;
+  background-color: #1e1e1e;
+}
+
+.darkplus ::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.darkplus ::-webkit-scrollbar-thumb {
+  background: #424242;
+}
+
+.darkplus ::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1a2640;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Animations */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-slide-up { animation: slide-up 0.25s ease-out; }
+.animate-fade-in  { animation: fade-in  0.2s  ease-out; }
+
+/* ── VS Code Dark+ surface overrides ── */
+/* These replace the gray-800/900 backgrounds with VS Code-accurate colors */
+.darkplus .dp-bg-main,
+.darkplus.dp-bg-main { background-color: #1e1e1e !important; }
+
+.darkplus .dp-bg-sidebar,
+.darkplus.dp-bg-sidebar { background-color: #252526 !important; }
+
+.darkplus .dp-bg-header,
+.darkplus.dp-bg-header { background-color: #323233 !important; }
+
+.darkplus .dp-bg-surface,
+.darkplus.dp-bg-surface { background-color: #252526 !important; }
+
+.darkplus .dp-bg-input,
+.darkplus.dp-bg-input { background-color: #3c3c3c !important; }
+
+.darkplus .dp-border,
+.darkplus.dp-border { border-color: #3c3c3c !important; }
+
+/* ── Dark+ neutral gray overrides for ALL Tailwind dark: utilities ── */
+/* Converts navy-blue grays to neutral grays when Dark+ mode is active */
+
+/* Backgrounds */
+.darkplus .dark\:bg-gray-900 { background-color: #171717 !important; }
+.darkplus .dark\:bg-gray-800 { background-color: #262626 !important; }
+.darkplus .dark\:bg-gray-700 { background-color: #404040 !important; }
+.darkplus .dark\:bg-gray-600 { background-color: #525252 !important; }
+.darkplus .dark\:bg-gray-100 { background-color: #f5f5f5 !important; }
+
+/* Hover backgrounds */
+.darkplus .dark\:hover\:bg-gray-800:hover { background-color: #262626 !important; }
+.darkplus .dark\:hover\:bg-gray-700:hover { background-color: #404040 !important; }
+.darkplus .dark\:hover\:bg-gray-600:hover { background-color: #525252 !important; }
+
+/* Borders */
+.darkplus .dark\:border-gray-700 { border-color: #404040 !important; }
+.darkplus .dark\:border-gray-600 { border-color: #525252 !important; }
+.darkplus .dark\:border-gray-700\/50 { border-color: rgba(64, 64, 64, 0.5) !important; }
+
+/* Text */
+.darkplus .dark\:text-gray-200 { color: #e5e5e5 !important; }
+.darkplus .dark\:text-gray-300 { color: #d4d4d4 !important; }
+.darkplus .dark\:text-gray-400 { color: #a3a3a3 !important; }
+.darkplus .dark\:text-gray-500 { color: #737373 !important; }
+
+/* Placeholders */
+.darkplus .dark\:placeholder-gray-400::placeholder { color: #a3a3a3 !important; }
+.darkplus .dark\:placeholder-gray-500::placeholder { color: #737373 !important; }
+
+/* Scrollbars for Dark+ */
+.darkplus ::-webkit-scrollbar-track { background: #262626; }
+.darkplus ::-webkit-scrollbar-thumb { background: #525252; }
+.darkplus ::-webkit-scrollbar-thumb:hover { background: #737373; }
