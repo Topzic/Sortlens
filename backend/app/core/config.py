@@ -13,12 +13,14 @@ class Settings(BaseSettings):
 
     # App info
     APP_NAME: str = "Sortlens"
-    VERSION: str = "0.3.5"
+    VERSION: str = "0.7.0"
     DEBUG: bool = True
 
     # Server
     HOST: str = "127.0.0.1"
     PORT: int = 8000
+    PORT_RANGE_START: int = 8000
+    PORT_RANGE_END: int = 8020
 
     # Paths
     DATA_DIR: Path = Path.home() / ".sortlens"
@@ -34,6 +36,7 @@ class Settings(BaseSettings):
     # Performance
     PREFETCH_COUNT: int = 3  # Number of images to prefetch
     SCAN_BATCH_SIZE: int = 100  # Files to process per batch during scan
+    ENABLE_YOLO: bool = True
 
     # Safety
     DELETION_MODE: Literal["trash", "rejected_folder", "permanent"] = "trash"
@@ -41,10 +44,14 @@ class Settings(BaseSettings):
     INCLUDE_SIDECARS: bool = True
 
     # Supported formats
-    SUPPORTED_FORMATS: tuple[str, ...] = (
+    SUPPORTED_IMAGE_FORMATS: tuple[str, ...] = (
         ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff",
-        ".nef", ".cr2", ".cr3", ".arw", ".raf", ".orf", ".rw2", ".dng"  # RAW formats
+        ".nef", ".cr2", ".cr3", ".arw", ".raf", ".orf", ".rw2", ".dng", ".raw",
     )
+    SUPPORTED_VIDEO_FORMATS: tuple[str, ...] = (
+        ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".wmv", ".mts", ".m2ts", ".3gp",
+    )
+    SUPPORTED_FORMATS: tuple[str, ...] = SUPPORTED_IMAGE_FORMATS + SUPPORTED_VIDEO_FORMATS
 
     model_config = SettingsConfigDict(env_prefix="SORTLENS_", env_file=".env")
 

@@ -1,0 +1,4 @@
+# Optional only if you need to prefer Anaconda's Python first on PATH:
+# $env:Path = "$(Join-Path $env:USERPROFILE 'anaconda3');$env:Path"
+
+.\start.ps1

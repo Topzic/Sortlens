@@ -9,6 +9,19 @@ from PIL import Image, UnidentifiedImageError
 
 RAW_EXTENSIONS = {'.nef', '.cr2', '.cr3', '.arw', '.raf', '.orf', '.rw2', '.dng', '.raw'}
 
+_EXPOSURE_PROGRAMS = {
+    0: "Not defined",
+    1: "Manual",
+    2: "Program AE",
+    3: "Aperture priority",
+    4: "Shutter priority",
+    5: "Creative program",
+    6: "Action program",
+    7: "Portrait mode",
+    8: "Landscape mode",
+    9: "Bulb",
+}
+
 
 def _to_float(value: Any) -> float | None:
     try:
@@ -42,6 +55,45 @@ def _format_shutter(value: Any) -> str | None:
     if denominator > 0:
         return f"1/{denominator}s"
     return None
+
+
+def _format_exposure_program(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if cleaned.isdigit():
+            return _EXPOSURE_PROGRAMS.get(int(cleaned), cleaned)
+        return cleaned
+
+    numeric = _to_float(value)
+    if numeric is None:
+        return None
+
+    program = int(round(numeric))
+    return _EXPOSURE_PROGRAMS.get(program, str(program))
+
+
+def _format_focal_length(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if cleaned.lower().endswith("mm"):
+            return cleaned
+
+    numeric = _to_float(value)
+    if numeric is None or numeric <= 0:
+        return None
+    if abs(numeric - round(numeric)) < 0.1:
+        return f"{int(round(numeric))} mm"
+    return f"{numeric:.1f} mm"
 
 
 def _ratio_to_float(val: Any) -> float | None:
@@ -101,6 +153,8 @@ def _extract_exif_via_exifread(file_path: Path) -> dict[str, Any]:
         "iso": None,
         "shutter_speed": None,
         "aperture": None,
+        "exposure_program": None,
+        "focal_length": None,
         "latitude": None,
         "longitude": None,
     }
@@ -149,6 +203,18 @@ def _extract_exif_via_exifread(file_path: Path) -> dict[str, Any]:
                                                    if hasattr(fnumber, 'values') and fnumber.values
                                                    else _ratio_to_float(fnumber))
 
+        exposure_program = tags.get("EXIF ExposureProgram")
+        if exposure_program:
+            result["exposure_program"] = _format_exposure_program(str(exposure_program))
+
+        focal_length = tags.get("EXIF FocalLength")
+        if focal_length:
+            result["focal_length"] = _format_focal_length(
+                _ratio_to_float(focal_length.values[0])
+                if hasattr(focal_length, 'values') and focal_length.values
+                else _ratio_to_float(focal_length)
+            )
+
         # GPS
         gps_lat = tags.get("GPS GPSLatitude")
         gps_lat_ref = tags.get("GPS GPSLatitudeRef")
@@ -177,6 +243,8 @@ def extract_image_metadata(file_path: Path) -> dict[str, Any]:
     iso = None
     shutter_speed = None
     aperture = None
+    exposure_program = None
+    focal_length = None
     latitude = None
     longitude = None
 
@@ -189,6 +257,8 @@ def extract_image_metadata(file_path: Path) -> dict[str, Any]:
     iso = er["iso"]
     shutter_speed = er["shutter_speed"]
     aperture = er["aperture"]
+    exposure_program = er["exposure_program"]
+    focal_length = er["focal_length"]
     latitude = er["latitude"]
     longitude = er["longitude"]
 
@@ -212,6 +282,10 @@ def extract_image_metadata(file_path: Path) -> dict[str, Any]:
                         shutter_speed = _format_shutter(exif.get(33434))
                     if aperture is None:
                         aperture = _format_aperture(exif.get(33437))
+                    if exposure_program is None:
+                        exposure_program = _format_exposure_program(exif.get(34850))
+                    if focal_length is None:
+                        focal_length = _format_focal_length(exif.get(37386))
                     if latitude is None or longitude is None:
                         lat, lng = _extract_gps_pil(exif)
                         if lat is not None:
@@ -245,6 +319,8 @@ def extract_image_metadata(file_path: Path) -> dict[str, Any]:
         "iso": iso,
         "shutter_speed": shutter_speed,
         "aperture": aperture,
+        "exposure_program": exposure_program,
+        "focal_length": focal_length,
         "latitude": latitude,
         "longitude": longitude,
     }

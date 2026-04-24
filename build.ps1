@@ -51,6 +51,15 @@ if (-not (Test-Path $venvPython)) {
     exit 1
 }
 
+# Ensure the backend environment matches the latest pyproject before packaging.
+Write-Host "      Syncing backend dependencies..." -ForegroundColor Gray
+& $venvPython -m pip install -e ".[dev]" --quiet
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Failed to sync backend dependencies" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
+
 # Install pyinstaller if needed
 & $venvPython -m pip install pyinstaller --quiet
 
@@ -66,6 +75,7 @@ $anacondaBin = "C:\Users\Ian_C\anaconda3\Library\bin"
     --name "Sortlens" `
     --add-data "static;static" `
     --add-data "app;app" `
+    --add-data "yolov8n.pt;." `
     --add-binary "$anacondaBin\libssl-3-x64.dll;." `
     --add-binary "$anacondaBin\libcrypto-3-x64.dll;." `
     --add-binary "$anacondaBin\liblzma.dll;." `
@@ -91,7 +101,15 @@ $anacondaBin = "C:\Users\Ian_C\anaconda3\Library\bin"
     --hidden-import "PIL" `
     --hidden-import "numpy" `
     --hidden-import "imagehash" `
+    --hidden-import "imageio_ffmpeg" `
     --hidden-import "webview" `
+    --hidden-import "onnxruntime" `
+    --hidden-import "tokenizers" `
+    --hidden-import "ultralytics" `
+    --collect-all "imageio_ffmpeg" `
+    --collect-all "onnxruntime" `
+    --collect-all "tokenizers" `
+    --collect-all "ultralytics" `
     --windowed `
     --icon "$iconPath" `
     main.py

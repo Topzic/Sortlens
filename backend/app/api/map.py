@@ -18,6 +18,7 @@ class MapImage(BaseModel):
     latitude: float
     longitude: float
     exif_date: str | None = None
+    media_type: str = "image"
 
 
 class MapResponse(BaseModel):
@@ -66,7 +67,8 @@ async def get_map_images(
 
     cursor = await db.execute(
         f"""
-        SELECT i.id, i.filename, i.latitude, i.longitude, i.exif_date
+        SELECT i.id, i.filename, i.latitude, i.longitude, i.exif_date,
+               COALESCE(i.media_type, 'image') AS media_type
         FROM images i
         {join_clause}
         {where}
@@ -83,6 +85,7 @@ async def get_map_images(
             latitude=row["latitude"],
             longitude=row["longitude"],
             exif_date=row["exif_date"],
+            media_type=row["media_type"],
         )
         for row in rows
     ]

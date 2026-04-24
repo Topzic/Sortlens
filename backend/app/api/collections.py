@@ -28,6 +28,8 @@ class CollectionUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     smart_rules: dict | None = None
+    is_favorite: bool | None = None
+    color: str | None = None
 
 
 class CollectionOut(BaseModel):
@@ -39,6 +41,8 @@ class CollectionOut(BaseModel):
     image_count: int
     created_at: str
     updated_at: str
+    is_favorite: bool = False
+    color: str | None = None
 
 
 class MemberAddRequest(BaseModel):
@@ -76,6 +80,8 @@ async def list_collections():
             image_count=r["image_count"],
             created_at=r["created_at"],
             updated_at=r["updated_at"],
+            is_favorite=bool(r["is_favorite"]) if r["is_favorite"] else False,
+            color=r["color"],
         )
         for r in rows
     ]
@@ -126,6 +132,8 @@ async def get_collection(collection_id: str):
         image_count=cnt_row["cnt"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        is_favorite=bool(row["is_favorite"]) if row["is_favorite"] else False,
+        color=row["color"],
     )
 
 
@@ -148,6 +156,12 @@ async def update_collection(collection_id: str, body: CollectionUpdate):
     if body.smart_rules is not None:
         updates.append("smart_rules = ?")
         params.append(json.dumps(body.smart_rules))
+    if body.is_favorite is not None:
+        updates.append("is_favorite = ?")
+        params.append(1 if body.is_favorite else 0)
+    if body.color is not None:
+        updates.append("color = ?")
+        params.append(body.color if body.color not in ("", "none") else None)
 
     if updates:
         now = datetime.now(timezone.utc).isoformat()

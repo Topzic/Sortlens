@@ -9,23 +9,82 @@ Write-Host ""
 
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+function Get-PythonVersionInfo {
+    param(
+        [string]$CommandName
+    )
+
+    $versionOutput = & $CommandName --version 2>&1
+    if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch "Python (\d+)\.(\d+)\.(\d+)") {
+        return $null
+    }
+
+    return [PSCustomObject]@{
+        Command = $CommandName
+        Version = [Version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+        Display = $versionOutput
+    }
+}
+
+function Test-VenvNeedsRebuild {
+    param(
+        [string]$VenvPath,
+        [string]$VenvPythonPath,
+        [Version]$MinimumVersion
+    )
+
+    if (-not (Test-Path $VenvPythonPath)) {
+        return $true
+    }
+
+    $venvVersionInfo = Get-PythonVersionInfo $VenvPythonPath
+    if (-not $venvVersionInfo) {
+        return $true
+    }
+
+    if ($venvVersionInfo.Version -lt $MinimumVersion) {
+        Write-Host "      Existing virtual environment uses $($venvVersionInfo.Display); rebuilding..." -ForegroundColor Gray
+        return $true
+    }
+
+    $pyvenvConfigPath = Join-Path $VenvPath "pyvenv.cfg"
+    if (-not (Test-Path $pyvenvConfigPath)) {
+        return $true
+    }
+
+    $commandLine = Get-Content $pyvenvConfigPath | Where-Object { $_ -like "command = *" } | Select-Object -First 1
+    if (-not $commandLine) {
+        return $false
+    }
+
+    $expectedVenvPath = [System.IO.Path]::GetFullPath($VenvPath).TrimEnd('\\')
+    $configuredVenvPath = ($commandLine -replace "^command = .*?-m venv\s+", "").Trim().Trim('"').TrimEnd('\\')
+
+    if (-not $configuredVenvPath) {
+        return $false
+    }
+
+    return $configuredVenvPath -ne $expectedVenvPath
+}
+
 # Check for Python (try multiple common names)
+$minimumPythonVersion = [Version]::new(3, 11, 0)
 $pythonCmd = $null
 foreach ($cmd in @("python", "python3", "py")) {
-    $found = Get-Command $cmd -ErrorAction SilentlyContinue
-    if ($found) {
-        # Verify it's actually Python and not the Windows Store alias
-        $version = & $cmd --version 2>&1
-        if ($version -match "Python \d+\.\d+") {
-            $pythonCmd = $cmd
-            Write-Host "[OK] Found $version" -ForegroundColor Green
-            break
-        }
+    if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+        continue
+    }
+
+    $versionInfo = Get-PythonVersionInfo $cmd
+    if ($versionInfo -and $versionInfo.Version -ge $minimumPythonVersion) {
+        $pythonCmd = $versionInfo.Command
+        Write-Host "[OK] Found $($versionInfo.Display)" -ForegroundColor Green
+        break
     }
 }
 
 if (-not $pythonCmd) {
-    Write-Host "[ERROR] Python not found!" -ForegroundColor Red
+    Write-Host "[ERROR] Python 3.11 or later not found!" -ForegroundColor Red
     Write-Host ""
     Write-Host "Please install Python 3.11 or later:" -ForegroundColor Yellow
     Write-Host "  1. Download from: https://www.python.org/downloads/" -ForegroundColor White
@@ -57,10 +116,17 @@ Write-Host "[1/4] Setting up backend..." -ForegroundColor Yellow
 $backendPath = Join-Path $scriptPath "backend"
 $venvPath = Join-Path $backendPath "venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
+$depsStampPath = Join-Path $venvPath ".deps-stamp"
+$pyprojectPath = Join-Path $backendPath "pyproject.toml"
 
 Push-Location $backendPath
 
-if (-not (Test-Path $venvPython)) {
+if (Test-VenvNeedsRebuild -VenvPath $venvPath -VenvPythonPath $venvPython -MinimumVersion $minimumPythonVersion) {
+    if (Test-Path $venvPath) {
+        Write-Host "      Removing stale virtual environment..." -ForegroundColor Gray
+        Remove-Item $venvPath -Recurse -Force
+    }
+
     Write-Host "      Creating Python virtual environment..." -ForegroundColor Gray
     & $pythonCmd -m venv venv
     if ($LASTEXITCODE -ne 0) {
@@ -69,13 +135,24 @@ if (-not (Test-Path $venvPython)) {
         exit 1
     }
     
-    Write-Host "      Installing Python dependencies..." -ForegroundColor Gray
-    & ".\venv\Scripts\pip.exe" install -e ".[dev]"
+}
+
+$pyprojectStamp = (Get-Item $pyprojectPath).LastWriteTimeUtc.Ticks.ToString()
+$needsDependencySync = -not (Test-Path $depsStampPath)
+if (-not $needsDependencySync) {
+    $installedStamp = (Get-Content $depsStampPath -Raw).Trim()
+    $needsDependencySync = $installedStamp -ne $pyprojectStamp
+}
+
+if ($needsDependencySync) {
+    Write-Host "      Syncing Python dependencies..." -ForegroundColor Gray
+    & $venvPython -m pip install -e ".[dev]"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[ERROR] Failed to install dependencies" -ForegroundColor Red
         Pop-Location
         exit 1
     }
+    Set-Content -Path $depsStampPath -Value $pyprojectStamp -Encoding ascii
 }
 
 Pop-Location
@@ -105,13 +182,33 @@ Write-Host "[OK] Frontend ready" -ForegroundColor Green
 # Start Backend
 Write-Host ""
 Write-Host "[3/4] Starting backend server..." -ForegroundColor Yellow
+
+# Clean stale .port file so vite picks up the new port
+$portFile = Join-Path $backendPath ".port"
+if (Test-Path $portFile) { Remove-Item $portFile -Force }
+
 $backendScript = @"
 cd '$backendPath'
 Write-Host 'Backend server starting...' -ForegroundColor Cyan
 & '.\venv\Scripts\python.exe' main.py
 "@
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendScript
-Write-Host "[OK] Backend starting at http://127.0.0.1:8000" -ForegroundColor Green
+
+# Wait for backend to write its .port file (up to 15 seconds)
+$waited = 0
+while (-not (Test-Path $portFile) -and $waited -lt 15) {
+    Start-Sleep -Milliseconds 500
+    $waited += 0.5
+}
+
+if (Test-Path $portFile) {
+    $backendPort = (Get-Content $portFile -Raw).Trim()
+    Write-Host "[OK] Backend starting at http://127.0.0.1:$backendPort" -ForegroundColor Green
+}
+else {
+    $backendPort = "8000"
+    Write-Host "[OK] Backend starting (port file not found, assuming $backendPort)" -ForegroundColor Yellow
+}
 
 # Start Frontend
 Write-Host ""

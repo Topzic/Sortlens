@@ -3,17 +3,21 @@ Actions (preview + execute) API endpoints.
 """
 
 import asyncio
+import io
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
+from PIL import Image, ImageOps
 from pydantic import BaseModel
 from send2trash import send2trash as _send2trash
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.media import is_raw_path, is_video_path
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +112,66 @@ def build_action_items(path: str, size: int, folder_path: str) -> list[ActionIte
                 )
 
     return items
+
+
+def _build_export_target(destination: Path, source_path: Path, export_format: str) -> Path:
+    if export_format == "jpeg":
+        suffix = ".jpg"
+    elif export_format == "png":
+        suffix = ".png"
+    else:
+        suffix = source_path.suffix
+
+    target = destination / f"{source_path.stem}{suffix}"
+    counter = 1
+    while target.exists():
+        target = destination / f"{source_path.stem}_{counter}{suffix}"
+        counter += 1
+    return target
+
+
+def _open_export_image(source_path: Path) -> Image.Image:
+    if is_raw_path(source_path):
+        import rawpy
+
+        with rawpy.imread(str(source_path)) as raw:
+            try:
+                rgb = raw.postprocess(
+                    use_camera_wb=True,
+                    no_auto_bright=False,
+                    output_bps=8,
+                )
+                return Image.fromarray(rgb)
+            except Exception as postprocess_error:
+                thumb = raw.extract_thumb()
+                if thumb.format == rawpy.ThumbFormat.JPEG:
+                    with Image.open(io.BytesIO(thumb.data)) as image:
+                        return image.copy()
+                if thumb.format == rawpy.ThumbFormat.BITMAP:
+                    return Image.fromarray(thumb.data)
+                raise RuntimeError(f"Could not decode RAW image: {source_path}") from postprocess_error
+
+    with Image.open(source_path) as image:
+        return image.copy()
+
+
+def _export_image_to_format(source_path: Path, target_path: Path, export_format: str) -> None:
+    with _open_export_image(source_path) as image:
+        image = ImageOps.exif_transpose(image)
+
+        if export_format == "jpeg":
+            rgba_image = image.convert("RGBA")
+            flattened = Image.new("RGB", rgba_image.size, (255, 255, 255))
+            flattened.paste(rgba_image, mask=rgba_image.getchannel("A"))
+            flattened.save(target_path, "JPEG", quality=95, subsampling=0)
+            return
+
+        if image.mode == "P":
+            image = image.convert("RGBA")
+        elif image.mode == "CMYK":
+            image = image.convert("RGB")
+
+        image.save(target_path, "PNG")
 
 
 async def execute_action_items(db, items: list[ActionItem]) -> tuple[int, int]:
@@ -295,6 +359,153 @@ async def delete_single(request: ActionDeleteRequest):
     return ActionDeleteResponse(success=failed == 0, processed=processed, failed=failed)
 
 
+# --- Batch delete ---
+
+class BatchDeleteRequest(BaseModel):
+    image_ids: list[str]
+
+
+class BatchDeleteResponse(BaseModel):
+    success: bool
+    processed: int
+    failed: int
+
+
+@router.post("/actions/batch-delete", response_model=BatchDeleteResponse)
+async def batch_delete(request: BatchDeleteRequest):
+    """Delete multiple images at once."""
+    if not request.image_ids:
+        return BatchDeleteResponse(success=True, processed=0, failed=0)
+
+    db = await get_db()
+    total_processed = 0
+    total_failed = 0
+
+    for image_id in request.image_ids:
+        cursor = await db.execute("SELECT * FROM images WHERE id = ?", (image_id,))
+        image = await cursor.fetchone()
+        if not image:
+            total_failed += 1
+            continue
+
+        items = build_action_items(image["path"], image["size"] or 0, image["folder"])
+        processed, failed = await execute_action_items(db, items)
+        total_processed += processed
+        total_failed += failed
+
+        if failed == 0:
+            await db.execute("DELETE FROM decisions WHERE image_id = ?", (image_id,))
+            await db.execute("DELETE FROM duplicate_group_members WHERE image_id = ?", (image_id,))
+            await db.execute("DELETE FROM quality_scores WHERE image_id = ?", (image_id,))
+            await db.execute("DELETE FROM collection_members WHERE image_id = ?", (image_id,))
+            await db.execute("DELETE FROM image_tags WHERE image_id = ?", (image_id,))
+            await db.execute("DELETE FROM images WHERE id = ?", (image_id,))
+
+    # Update folder image counts
+    await db.execute("""
+        UPDATE folders SET image_count = (
+            SELECT COUNT(*) FROM images WHERE images.folder = folders.path
+        )
+    """)
+    await db.commit()
+
+    return BatchDeleteResponse(
+        success=total_failed == 0,
+        processed=total_processed,
+        failed=total_failed,
+    )
+
+
+# --- Batch move ---
+
+class BatchMoveRequest(BaseModel):
+    image_ids: list[str]
+    destination: str
+
+
+class BatchMoveResponse(BaseModel):
+    success: bool
+    moved: int
+    failed: int
+
+
+@router.post("/actions/batch-move", response_model=BatchMoveResponse)
+async def batch_move(request: BatchMoveRequest):
+    """Move multiple images to a destination folder."""
+    dest_dir = Path(request.destination)
+    if not dest_dir.exists():
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+    db = await get_db()
+    moved = 0
+    failed = 0
+
+    for image_id in request.image_ids:
+        cursor = await db.execute("SELECT * FROM images WHERE id = ?", (image_id,))
+        image = await cursor.fetchone()
+        if not image:
+            failed += 1
+            continue
+
+        src = Path(image["path"])
+        if not src.exists():
+            failed += 1
+            continue
+
+        try:
+            dest = dest_dir / src.name
+            # Handle name collisions
+            if dest.exists():
+                stem = src.stem
+                suffix = src.suffix
+                counter = 1
+                while dest.exists():
+                    dest = dest_dir / f"{stem}_{counter}{suffix}"
+                    counter += 1
+            await asyncio.to_thread(src.replace, dest)
+
+            # Move sidecars too
+            if settings.INCLUDE_SIDECARS:
+                for sidecar in get_sidecar_paths(src):
+                    sidecar_dest = dest_dir / sidecar.name
+                    await asyncio.to_thread(sidecar.replace, sidecar_dest)
+
+            # Update the image path in the database
+            await db.execute(
+                "UPDATE images SET path = ?, folder = ? WHERE id = ?",
+                (str(dest), str(dest_dir), image_id),
+            )
+
+            await db.execute(
+                """
+                INSERT INTO audit_log (action, source_path, destination_path, file_size, success)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("batch_move", str(src), str(dest), image["size"] or 0, 1),
+            )
+            moved += 1
+        except Exception as exc:
+            logger.error("Failed to move image %s: %s", image_id, exc)
+            await db.execute(
+                """
+                INSERT INTO audit_log (action, source_path, destination_path, file_size, success, error_message)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("batch_move", str(src), str(dest_dir), image["size"] or 0, 0, str(exc)),
+            )
+            failed += 1
+
+    # Update folder image counts
+    await db.execute("""
+        UPDATE folders SET image_count = (
+            SELECT COUNT(*) FROM images WHERE images.folder = folders.path
+        )
+    """)
+    await db.commit()
+
+    return BatchMoveResponse(success=failed == 0, moved=moved, failed=failed)
+
+
 # --- Stats endpoint ---
 
 class StatsResponse(BaseModel):
@@ -386,6 +597,7 @@ async def get_stats():
 class CopyExportRequest(BaseModel):
     image_ids: list[str]
     destination: str
+    format: Literal["original", "jpeg", "png"] = "original"
 
 
 class CopyExportResponse(BaseModel):
@@ -396,7 +608,7 @@ class CopyExportResponse(BaseModel):
 
 @router.post("/actions/copy", response_model=CopyExportResponse)
 async def copy_images(request: CopyExportRequest):
-    """Copy selected images to a destination folder."""
+    """Copy or export selected images to a destination folder."""
     dest = Path(request.destination)
     if not dest.is_dir():
         try:
@@ -418,17 +630,18 @@ async def copy_images(request: CopyExportRequest):
         if not src.exists():
             failed += 1
             continue
+        target = _build_export_target(dest, src, request.format)
         try:
-            import shutil
-            target = dest / src.name
-            # Avoid overwriting by appending a suffix
-            counter = 1
-            while target.exists():
-                target = dest / f"{src.stem}_{counter}{src.suffix}"
-                counter += 1
-            await asyncio.to_thread(shutil.copy2, str(src), str(target))
+            if request.format == "original":
+                await asyncio.to_thread(shutil.copy2, str(src), str(target))
+            else:
+                if is_video_path(src):
+                    failed += 1
+                    continue
+                await asyncio.to_thread(_export_image_to_format, src, target, request.format)
             copied += 1
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to export %s to %s as %s: %s", image_id, target, request.format, exc)
             failed += 1
 
     return CopyExportResponse(success=failed == 0, copied=copied, failed=failed)

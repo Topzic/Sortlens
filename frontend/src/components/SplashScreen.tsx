@@ -98,7 +98,7 @@ export default function SplashScreen({ onReady }: { onReady: () => void }) {
                             The backend did not respond after {attempts} attempts.
                         </p>
                         <p className="mt-2 text-xs text-red-400">
-                            Make sure the backend server is running on port 8000.
+                            Make sure the backend server is running.
                         </p>
                         <button
                             onClick={() => {

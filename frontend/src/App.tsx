@@ -29,7 +29,7 @@ function App() {
                     <BrowserRouter>
                         <Routes>
                             <Route path="/" element={<Layout />}>
-                                <Route index element={<Navigate to="/swipe" replace />} />
+                                <Route index element={<Navigate to="/browse" replace />} />
                                 <Route path="swipe" element={<SwipePage />} />
                                 <Route path="blurry" element={<BlurryPage />} />
                                 <Route path="duplicates" element={<DuplicatesPage />} />

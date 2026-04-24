@@ -2,15 +2,18 @@
 Session management API endpoints.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.core.database import get_db
+from app.core.media import RAW_EXTENSIONS, extract_media_metadata, guess_media_type
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -52,18 +55,28 @@ class NextImageResponse(BaseModel):
     folder: str
     size: int
     format: str
+    media_type: str = "image"
     width: int | None = None
     height: int | None = None
+    duration: float | None = None
+    fps: float | None = None
+    video_codec: str | None = None
+    audio_codec: str | None = None
+    bitrate: int | None = None
+    has_audio: bool = False
     camera_make: str | None = None
     camera_model: str | None = None
     iso: int | None = None
     shutter_speed: str | None = None
     aperture: str | None = None
+    exposure_program: str | None = None
+    focal_length: str | None = None
     exif_date: str | None = None
     cursor_position: int
     total_images: int
     has_next: bool
     has_previous: bool
+    tags: list[str] = []
 
 
 class SessionQueueResponse(BaseModel):
@@ -93,7 +106,20 @@ def generate_session_id(folder_path: str, sort_mode: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
-def _build_next_image_response(image, position: int, total_images: int) -> NextImageResponse:
+async def _fetch_image_tags(db, image_id: str) -> list[str]:
+    """Fetch tag names for an image from the DB."""
+    try:
+        cursor = await db.execute(
+            """SELECT t.name FROM image_tags it JOIN tags t ON t.id = it.tag_id WHERE it.image_id = ? ORDER BY t.name""",
+            (image_id,),
+        )
+        rows = await cursor.fetchall()
+        return [r["name"] for r in rows]
+    except Exception:
+        return []
+
+
+def _build_next_image_response(image, position: int, total_images: int, tags: list[str] | None = None) -> NextImageResponse:
     return NextImageResponse(
         id=image["id"],
         path=image["path"],
@@ -101,19 +127,92 @@ def _build_next_image_response(image, position: int, total_images: int) -> NextI
         folder=image["folder"],
         size=image["size"] or 0,
         format=image["format"] or "",
+        media_type=image["media_type"] or "image",
         width=image["width"],
         height=image["height"],
+        duration=image["duration"],
+        fps=image["fps"],
+        video_codec=image["video_codec"],
+        audio_codec=image["audio_codec"],
+        bitrate=image["bitrate"],
+        has_audio=bool(image["has_audio"]),
         camera_make=image["camera_make"],
         camera_model=image["camera_model"],
         iso=image["iso"],
         shutter_speed=image["shutter_speed"],
         aperture=image["aperture"],
+        exposure_program=image.get("exposure_program"),
+        focal_length=image.get("focal_length"),
         exif_date=image["exif_date"],
         cursor_position=position,
         total_images=total_images,
         has_next=position < total_images - 1,
         has_previous=position > 0,
+        tags=tags or [],
     )
+
+
+def _needs_metadata_refresh(image) -> bool:
+    media_type = guess_media_type(image["format"], image["media_type"])
+    fmt = (image["format"] or "").lower()
+    missing_size = image["width"] is None or image["height"] is None
+
+    if media_type == "video":
+        missing_video_fields = image["duration"] is None or image["video_codec"] is None
+        return missing_size or missing_video_fields
+
+    metadata_empty = all(
+        image[key] is None for key in ("camera_make", "camera_model", "iso", "shutter_speed")
+    )
+    missing_extended_metadata = image["exposure_program"] is None or image["focal_length"] is None
+    suspicious_raw_size = fmt in {ext.lstrip(".") for ext in RAW_EXTENSIONS} and (
+        (image["width"] or 0) <= 320 or (image["height"] or 0) <= 320
+    )
+    return metadata_empty or missing_size or suspicious_raw_size or missing_extended_metadata
+
+
+async def _refresh_image_metadata_if_needed(db, image):
+    if not image or not _needs_metadata_refresh(image):
+        return image
+
+    metadata = await asyncio.to_thread(extract_media_metadata, Path(image["path"]))
+    await db.execute(
+        """
+        UPDATE images
+        SET media_type = ?, width = ?, height = ?, exif_date = ?, camera_make = ?, camera_model = ?, iso = ?,
+            shutter_speed = ?, aperture = ?, exposure_program = ?, focal_length = ?, latitude = ?, longitude = ?, duration = ?, fps = ?,
+            video_codec = ?, audio_codec = ?, bitrate = ?, has_audio = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            metadata["media_type"],
+            metadata["width"],
+            metadata["height"],
+            metadata["exif_date"],
+            metadata["camera_make"],
+            metadata["camera_model"],
+            metadata["iso"],
+            metadata["shutter_speed"],
+            metadata["aperture"],
+            metadata["exposure_program"],
+            metadata["focal_length"],
+            metadata.get("latitude"),
+            metadata.get("longitude"),
+            metadata.get("duration"),
+            metadata.get("fps"),
+            metadata.get("video_codec"),
+            metadata.get("audio_codec"),
+            metadata.get("bitrate"),
+            1 if metadata.get("has_audio") else 0,
+            image["id"],
+        ),
+    )
+    await db.commit()
+
+    refreshed = dict(image)
+    refreshed.update(metadata)
+    refreshed["has_audio"] = 1 if metadata.get("has_audio") else 0
+    return refreshed
 
 
 @router.post("/session/start", response_model=SessionResponse)
@@ -251,6 +350,7 @@ async def get_next_image(session_id: str):
     
     if not image:
         raise HTTPException(status_code=404, detail="No more images to review")
+    image = await _refresh_image_metadata_if_needed(db, image)
     
     # Get total and position
     cursor = await db.execute(
@@ -266,8 +366,9 @@ async def get_next_image(session_id: str):
     )
     row = await cursor.fetchone()
     reviewed = row["count"] if row else 0
-    
-    return _build_next_image_response(image, reviewed, total)
+
+    tags = await _fetch_image_tags(db, image["id"])
+    return _build_next_image_response(image, reviewed, total, tags)
 
 
 @router.get("/session/{session_id}/queue", response_model=SessionQueueResponse)
@@ -318,12 +419,13 @@ async def get_session_queue(
     )
     rows = await cursor.fetchall()
 
-    return SessionQueueResponse(
-        images=[
-            _build_next_image_response(image, reviewed + index, total_images)
-            for index, image in enumerate(rows)
-        ]
-    )
+    images_with_tags = []
+    for index, image in enumerate(rows):
+        image = await _refresh_image_metadata_if_needed(db, image)
+        tags = await _fetch_image_tags(db, image["id"])
+        images_with_tags.append(_build_next_image_response(image, reviewed + index, total_images, tags))
+
+    return SessionQueueResponse(images=images_with_tags)
 
 
 @router.post("/session/{session_id}/decision", response_model=DecisionResponse)
@@ -425,7 +527,9 @@ async def record_decision(session_id: str, request: DecisionRequest):
         next_img = await cursor.fetchone()
 
         if next_img:
-            next_image_data = _build_next_image_response(next_img, new_position, total_images)
+            next_img = await _refresh_image_metadata_if_needed(db, next_img)
+            next_tags = await _fetch_image_tags(db, next_img["id"])
+            next_image_data = _build_next_image_response(next_img, new_position, total_images, next_tags)
     except Exception:
         logger.warning("Failed to prefetch next image for session %s", session_id)
 
@@ -504,17 +608,19 @@ async def undo_decision(session_id: str):
         (last_decision["image_id"],)
     )
     image = await cursor.fetchone()
+    image = await _refresh_image_metadata_if_needed(db, image)
 
     await db.commit()
     logger.info("Undid decision %s for session %s", last_decision["decision"], session_id)
 
+    restored_tags = await _fetch_image_tags(db, last_decision["image_id"]) if image else []
     return UndoResponse(
         success=True,
         undone_image_id=last_decision["image_id"],
         undone_decision=last_decision["decision"],
         cursor_position=new_position,
         restored_image=(
-            _build_next_image_response(image, new_position, total_images)
+            _build_next_image_response(image, new_position, total_images, restored_tags)
             if image
             else None
         ),

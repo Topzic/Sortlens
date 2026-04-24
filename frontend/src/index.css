@@ -125,10 +125,22 @@
 .darkplus .dark\:bg-gray-600 { background-color: #525252 !important; }
 .darkplus .dark\:bg-gray-100 { background-color: #f5f5f5 !important; }
 
+/* Opacity variants used for dark surfaces */
+.darkplus .dark\:bg-gray-900\/20 { background-color: rgba(23, 23, 23, 0.2) !important; }
+.darkplus .dark\:bg-gray-900\/30 { background-color: rgba(23, 23, 23, 0.3) !important; }
+.darkplus .dark\:bg-gray-900\/40 { background-color: rgba(23, 23, 23, 0.4) !important; }
+.darkplus .dark\:bg-gray-900\/50 { background-color: rgba(23, 23, 23, 0.5) !important; }
+.darkplus .dark\:bg-gray-900\/70 { background-color: rgba(23, 23, 23, 0.7) !important; }
+.darkplus .dark\:bg-gray-800\/50 { background-color: rgba(38, 38, 38, 0.5) !important; }
+.darkplus .dark\:bg-gray-700\/50 { background-color: rgba(64, 64, 64, 0.5) !important; }
+.darkplus .dark\:bg-gray-700\/60 { background-color: rgba(64, 64, 64, 0.6) !important; }
+
 /* Hover backgrounds */
 .darkplus .dark\:hover\:bg-gray-800:hover { background-color: #262626 !important; }
 .darkplus .dark\:hover\:bg-gray-700:hover { background-color: #404040 !important; }
 .darkplus .dark\:hover\:bg-gray-600:hover { background-color: #525252 !important; }
+.darkplus .dark\:hover\:bg-gray-700\/50:hover { background-color: rgba(64, 64, 64, 0.5) !important; }
+.darkplus .dark\:hover\:bg-gray-700\/60:hover { background-color: rgba(64, 64, 64, 0.6) !important; }
 
 /* Borders */
 .darkplus .dark\:border-gray-700 { border-color: #404040 !important; }
@@ -140,6 +152,29 @@
 .darkplus .dark\:text-gray-300 { color: #d4d4d4 !important; }
 .darkplus .dark\:text-gray-400 { color: #a3a3a3 !important; }
 .darkplus .dark\:text-gray-500 { color: #737373 !important; }
+
+/* Neutralize primary accents in Dark+ so this theme stays charcoal rather than blue */
+.darkplus .bg-primary-50 { background-color: #262626 !important; }
+.darkplus .bg-primary-500 { background-color: #525252 !important; }
+.darkplus .bg-primary-600 { background-color: #3f3f46 !important; }
+.darkplus .hover\:bg-primary-50:hover { background-color: #2f2f2f !important; }
+.darkplus .hover\:bg-primary-700:hover { background-color: #52525b !important; }
+.darkplus .text-primary-500,
+.darkplus .text-primary-600,
+.darkplus .text-primary-700,
+.darkplus .dark\:text-primary-300 { color: #f5f5f5 !important; }
+.darkplus .dark\:text-primary-400 { color: #d4d4d4 !important; }
+.darkplus .border-primary-200,
+.darkplus .border-primary-500,
+.darkplus .dark\:border-primary-800 { border-color: #525252 !important; }
+.darkplus .dark\:bg-primary-900\/30 { background-color: rgba(38, 38, 38, 0.9) !important; }
+.darkplus .dark\:bg-primary-900\/50,
+.darkplus .dark\:bg-primary-800\/50 { background-color: rgba(64, 64, 64, 0.75) !important; }
+.darkplus .dark\:hover\:bg-primary-900\/50:hover,
+.darkplus .dark\:hover\:bg-primary-800\/50:hover { background-color: rgba(82, 82, 82, 0.8) !important; }
+.darkplus .accent-primary-600 { accent-color: #737373 !important; }
+.darkplus .focus\:border-primary-500:focus { border-color: #737373 !important; }
+.darkplus .focus\:ring-primary-500:focus { --tw-ring-color: #737373 !important; }
 
 /* Placeholders */
 .darkplus .dark\:placeholder-gray-400::placeholder { color: #a3a3a3 !important; }

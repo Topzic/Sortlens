@@ -83,7 +83,7 @@ export default function Header() {
                     </button>
 
                     {dropdownOpen && registeredFolders.length > 0 && (
-                        <div className="absolute left-0 top-full z-50 mt-1 min-w-[280px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-700">
+                        <div className="absolute left-0 top-full z-50 mt-1 min-w-[280px] max-h-[70vh] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-700">
                             {registeredFolders.length > 1 && (
                                 <button
                                     onClick={() => {

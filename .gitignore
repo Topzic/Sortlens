@@ -40,6 +40,9 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Runtime
+backend/.port
+
 # Build artifacts
 backend/dist/
 backend/build/

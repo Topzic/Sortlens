@@ -192,172 +192,177 @@ export default function BlurryPage() {
     const blurryCount = results.length
 
     return (
-        <div className="flex h-full flex-col">
-            {/* Header */}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                        Blurry Photos
-                    </h1>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Detect and review out-of-focus images
-                        {hasScanned && ` — ${blurryCount} result(s)`}
-                    </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-4">
-                    {/* Threshold slider */}
-                    <div className="flex items-center gap-2">
-                        <SlidersHorizontal className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-300">
-                            Threshold:
-                        </span>
-                        <input
-                            type="range"
-                            min="0"
-                            max="300"
-                            value={threshold}
-                            onChange={(e) => setThreshold(Number(e.target.value))}
-                            className="h-2 w-32 cursor-pointer appearance-none rounded-lg bg-gray-200 dark:bg-gray-700"
-                        />
-                        <span className="w-8 text-right text-sm font-medium text-gray-700 dark:text-gray-200">
-                            {threshold}
-                        </span>
+        <div className="flex h-full flex-col -m-6">
+            {/* Header — fixed at top */}
+            <div className="shrink-0 px-6 pt-6 bg-gray-50 dark:bg-gray-900 dp-bg-main">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 pb-2 dark:border-gray-700">
+                    <div>
+                        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                            Blurry Photos
+                        </h1>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            Detect and review out-of-focus images
+                            {hasScanned && ` — ${blurryCount} result(s)`}
+                        </p>
                     </div>
 
-                    <button
-                        onClick={handleScan}
-                        className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
-                        disabled={!folderStatus?.path || isScanning}
-                    >
-                        {isScanning ? (
-                            <span className="flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" /> Scanning…
+                    <div className="flex flex-wrap items-center gap-4">
+                        {/* Threshold slider */}
+                        <div className="flex items-center gap-2">
+                            <SlidersHorizontal className="h-4 w-4 text-gray-400" />
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                                Threshold:
                             </span>
-                        ) : 'Scan for Blurry'}
-                    </button>
+                            <input
+                                type="range"
+                                min="0"
+                                max="300"
+                                value={threshold}
+                                onChange={(e) => setThreshold(Number(e.target.value))}
+                                className="h-2 w-32 cursor-pointer appearance-none rounded-lg bg-gray-200 dark:bg-gray-700"
+                            />
+                            <span className="w-8 text-right text-sm font-medium text-gray-700 dark:text-gray-200">
+                                {threshold}
+                            </span>
+                        </div>
+
+                        <button
+                            onClick={handleScan}
+                            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
+                            disabled={!folderStatus?.path || isScanning}
+                        >
+                            {isScanning ? (
+                                <span className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Scanning…
+                                </span>
+                            ) : 'Scan for Blurry'}
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Scanning with no results yet — centered spinner + progress */}
-            {isScanning && results.length === 0 && (
-                <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                    <Loader2 className="h-10 w-10 animate-spin text-gray-400" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Analysing images…</p>
-                    {scanTotal > 0 && (
-                        <div className="w-64 space-y-1">
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                                <div
-                                    className="h-full rounded-full bg-primary-500 transition-all duration-300"
-                                    style={{ width: `${Math.round((scanProgress / scanTotal) * 100)}%` }}
-                                />
-                            </div>
-                            <p className="text-center text-xs text-gray-400">
-                                {scanMessage || `${scanProgress} / ${scanTotal}`}
-                            </p>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Empty state */}
-            {!isScanning && results.length === 0 && (
-                <div className="flex flex-1 flex-col items-center justify-center">
-                    <div className="text-center max-w-sm">
-                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
-                            <Focus className="h-8 w-8 text-gray-400" />
-                        </div>
-                        <h2 className="mb-2 text-xl font-semibold text-gray-900 dark:text-white">
-                            {activeFolderIds.length > 1
-                                ? 'Select a single folder'
-                                : activeFolderIds.length === 0
-                                    ? 'Select a folder'
-                                    : hasScanned
-                                        ? 'All clear!'
-                                        : 'No scan results'}
-                        </h2>
-                        <p className="mb-6 text-gray-500 dark:text-gray-400">
-                            {activeFolderIds.length > 1
-                                ? 'Blur scan works with one folder at a time. Pick a single folder from the sidebar or header dropdown.'
-                                : activeFolderIds.length === 0
-                                    ? 'Choose a folder from the sidebar or the dropdown above to scan for blurry photos.'
-                                    : hasScanned
-                                        ? 'No blurry images found at this threshold. Try increasing it.'
-                                        : 'Run a blur scan to find out-of-focus photos.'}
-                        </p>
-                    </div>
-                </div>
-            )}
-
-            {/* Results grid (shown even while scanning once partial results arrive) */}
-            {results.length > 0 && (
-                <div className="flex flex-1 flex-col overflow-auto">
-                    {/* Progress banner while scanning */}
-                    {isScanning && scanTotal > 0 && (
-                        <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 p-3 dark:border-primary-800 dark:bg-primary-900/30">
-                            <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary-500" />
-                            <div className="min-w-0 flex-1">
-                                <div className="mb-1 flex items-center justify-between text-xs text-primary-700 dark:text-primary-300">
-                                    <span>{scanMessage || 'Scanning…'}</span>
-                                    <span>{Math.round((scanProgress / scanTotal) * 100)}%</span>
-                                </div>
-                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary-200 dark:bg-primary-800">
+            {/* Scrollable content */}
+            <div className="flex-1 min-h-0 overflow-auto px-6 pb-6">
+                {/* Scanning with no results yet — centered spinner + progress */}
+                {isScanning && results.length === 0 && (
+                    <div className="flex h-full flex-col items-center justify-center gap-3">
+                        <Loader2 className="h-10 w-10 animate-spin text-gray-400" />
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Analysing images…</p>
+                        {scanTotal > 0 && (
+                            <div className="w-64 space-y-1">
+                                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                                     <div
                                         className="h-full rounded-full bg-primary-500 transition-all duration-300"
                                         style={{ width: `${Math.round((scanProgress / scanTotal) * 100)}%` }}
                                     />
                                 </div>
+                                <p className="text-center text-xs text-gray-400">
+                                    {scanMessage || `${scanProgress} / ${scanTotal}`}
+                                </p>
                             </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Empty state */}
+                {!isScanning && results.length === 0 && (
+                    <div className="flex h-full flex-col items-center justify-center">
+                        <div className="text-center max-w-sm">
+                            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+                                <Focus className="h-8 w-8 text-gray-400" />
+                            </div>
+                            <h2 className="mb-2 text-xl font-semibold text-gray-900 dark:text-white">
+                                {activeFolderIds.length > 1
+                                    ? 'Select a single folder'
+                                    : activeFolderIds.length === 0
+                                        ? 'Select a folder'
+                                        : hasScanned
+                                            ? 'All clear!'
+                                            : 'No scan results'}
+                            </h2>
+                            <p className="mb-6 text-gray-500 dark:text-gray-400">
+                                {activeFolderIds.length > 1
+                                    ? 'Blur scan works with one folder at a time. Pick a single folder from the sidebar or header dropdown.'
+                                    : activeFolderIds.length === 0
+                                        ? 'Choose a folder from the sidebar or the dropdown above to scan for blurry photos.'
+                                        : hasScanned
+                                            ? 'No blurry images found at this threshold. Try increasing it.'
+                                            : 'Run a blur scan to find out-of-focus photos.'}
+                            </p>
                         </div>
-                    )}
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {results.map((item) => (
-                            <div
-                                key={item.id}
-                                className="group overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
-                            >
-                                <div
-                                    className="relative aspect-video cursor-pointer bg-black"
-                                    onClick={() => openImage(item)}
-                                >
-                                    <img
-                                        src={api.getPreviewUrl(item.id)}
-                                        alt={item.filename}
-                                        loading="lazy"
-                                        className="h-full w-full object-contain"
-                                    />
-                                    <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                                        {item.blur_score.toFixed(1)}
-                                    </span>
-                                </div>
-                                <div className="p-3">
-                                    <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
-                                        {item.filename}
-                                    </p>
-                                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                                        {item.folder}
-                                    </p>
-                                    <div className="mt-3 flex gap-2">
-                                        <button
-                                            onClick={() => handleKeep(item.id)}
-                                            className="flex items-center gap-1 rounded-md border border-green-600 px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-900/30"
-                                        >
-                                            <CheckCircle className="h-3 w-3" /> Keep
-                                        </button>
-                                        <button
-                                            onClick={() => requestDelete(item.id)}
-                                            disabled={isDeleting}
-                                            className="flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                                        >
-                                            <Trash2 className="h-3 w-3" /> Delete
-                                        </button>
+                    </div>
+                )}
+
+                {/* Results grid (shown even while scanning once partial results arrive) */}
+                {results.length > 0 && (
+                    <div className="flex flex-col">
+                        {/* Progress banner while scanning */}
+                        {isScanning && scanTotal > 0 && (
+                            <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-50 p-3 dark:border-primary-800 dark:bg-primary-900/30">
+                                <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary-500" />
+                                <div className="min-w-0 flex-1">
+                                    <div className="mb-1 flex items-center justify-between text-xs text-primary-700 dark:text-primary-300">
+                                        <span>{scanMessage || 'Scanning…'}</span>
+                                        <span>{Math.round((scanProgress / scanTotal) * 100)}%</span>
+                                    </div>
+                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary-200 dark:bg-primary-800">
+                                        <div
+                                            className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                                            style={{ width: `${Math.round((scanProgress / scanTotal) * 100)}%` }}
+                                        />
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                        )}
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {results.map((item) => (
+                                <div
+                                    key={item.id}
+                                    className="group overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                                >
+                                    <div
+                                        className="relative aspect-video cursor-pointer bg-black"
+                                        onClick={() => openImage(item)}
+                                    >
+                                        <img
+                                            src={api.getPreviewUrl(item.id)}
+                                            alt={item.filename}
+                                            loading="lazy"
+                                            className="h-full w-full object-contain"
+                                        />
+                                        <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                                            {item.blur_score.toFixed(1)}
+                                        </span>
+                                    </div>
+                                    <div className="p-3">
+                                        <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                                            {item.filename}
+                                        </p>
+                                        <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                            {item.folder}
+                                        </p>
+                                        <div className="mt-3 flex gap-2">
+                                            <button
+                                                onClick={() => handleKeep(item.id)}
+                                                className="flex items-center gap-1 rounded-md border border-green-600 px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-900/30"
+                                            >
+                                                <CheckCircle className="h-3 w-3" /> Keep
+                                            </button>
+                                            <button
+                                                onClick={() => requestDelete(item.id)}
+                                                disabled={isDeleting}
+                                                className="flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                                            >
+                                                <Trash2 className="h-3 w-3" /> Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>{/* end scrollable content */}
 
             {/* Lightbox */}
             {selectedImage && (

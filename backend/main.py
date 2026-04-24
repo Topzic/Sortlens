@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from app.api import actions, browse, collections, dupes, health, images, library, map, quality, sessions, settings_api, tasks, version, folders, update
+from app.api import actions, browse, collections, dupes, health, images, library, map, quality, sessions, settings_api, tags, tasks, version, folders, update
 from app.core.config import settings
 from app.core.database import close_db, init_db
 
@@ -100,15 +100,19 @@ app = FastAPI(
 )
 
 # Configure CORS for local development
+_cors_origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+]
+# Allow the full backend port range so the packaged SPA always works
+for _p in range(settings.PORT_RANGE_START, settings.PORT_RANGE_END + 1):
+    _cors_origins.append(f"http://127.0.0.1:{_p}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        f"http://127.0.0.1:{settings.PORT}",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -129,6 +133,7 @@ app.include_router(collections.router, prefix="/api", tags=["Collections"])
 app.include_router(settings_api.router, prefix="/api", tags=["Settings"])
 app.include_router(tasks.router, prefix="/api", tags=["Tasks"])
 app.include_router(library.router, prefix="/api", tags=["Library"])
+app.include_router(tags.router, prefix="/api", tags=["Tags"])
 app.include_router(update.router, prefix="/api", tags=["Update"])
 
 # Serve built frontend when the static directory exists (packaged mode)
@@ -146,6 +151,35 @@ if _STATIC_DIR.is_dir():
 
 if __name__ == "__main__":
     import uvicorn
+    import socket
+
+    def _find_free_port():
+        """Try ports in the configured range, return the first available one."""
+        for port in range(settings.PORT_RANGE_START, settings.PORT_RANGE_END + 1):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind((settings.HOST, port))
+                    return port
+                except OSError:
+                    logger.info("Port %d is in use, trying next...", port)
+        return None
+
+    chosen_port = _find_free_port()
+    if chosen_port is None:
+        logger.error(
+            "No free port found in range %d-%d!",
+            settings.PORT_RANGE_START,
+            settings.PORT_RANGE_END,
+        )
+        sys.exit(1)
+
+    if chosen_port != settings.PORT:
+        logger.info("Default port %d taken, using port %d", settings.PORT, chosen_port)
+    settings.PORT = chosen_port
+
+    # Write chosen port to .port file so the dev frontend can discover it
+    _port_file = Path(__file__).resolve().parent / ".port"
+    _port_file.write_text(str(chosen_port), encoding="utf-8")
 
     if getattr(sys, "frozen", False):
         import threading
@@ -175,21 +209,6 @@ if __name__ == "__main__":
         logger.info("Static dir exists: %s (%s)", _STATIC_DIR.is_dir(), _STATIC_DIR)
         logger.info("Data dir: %s", settings.DATA_DIR)
         logger.info("Port: %s", settings.PORT)
-
-        # ── Check port availability ────────────────────────────────────
-        import socket
-        def _port_free(port):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                try:
-                    s.bind(("127.0.0.1", port))
-                    return True
-                except OSError:
-                    return False
-
-        if not _port_free(settings.PORT):
-            logger.error("Port %s is already in use!", settings.PORT)
-        else:
-            logger.info("Port %s is free", settings.PORT)
 
         # ── Splash screen HTML (shown immediately) ─────────────────────
         _splash_html = """<!DOCTYPE html>
@@ -267,6 +286,23 @@ if __name__ == "__main__":
         _file_handler.flush()
 
         # ── Open native window with splash screen immediately ──────────
+        def _wait_for_server_ready(max_attempts: int = 120) -> bool:
+            """Poll the backend health endpoint until it responds or times out."""
+            _app_url = f"http://127.0.0.1:{settings.PORT}"
+            for i in range(max_attempts):
+                try:
+                    r = urllib.request.urlopen(f"{_app_url}/health", timeout=1)
+                    if r.status == 200:
+                        logger.info("Server ready after %d attempts", i + 1)
+                        _file_handler.flush()
+                        return True
+                except Exception:
+                    pass
+                time.sleep(1)
+            logger.error("Server did not respond after %d attempts", max_attempts)
+            _file_handler.flush()
+            return False
+
         try:
             import webview
             logger.info("Opening pywebview window with splash screen")
@@ -282,20 +318,9 @@ if __name__ == "__main__":
             def _wait_and_navigate():
                 """Poll health endpoint from Python (avoids CORS), then navigate."""
                 _app_url = f"http://127.0.0.1:{settings.PORT}"
-                for i in range(120):
-                    try:
-                        r = urllib.request.urlopen(f"{_app_url}/health", timeout=1)
-                        if r.status == 200:
-                            logger.info("Server ready after %d attempts, loading app", i + 1)
-                            _file_handler.flush()
-                            _window.load_url(_app_url)
-                            return
-                    except Exception:
-                        pass
-                    time.sleep(1)
-                # Timed out
-                logger.error("Server did not respond after 120 attempts")
-                _file_handler.flush()
+                if _wait_for_server_ready():
+                    _window.load_url(_app_url)
+                    return
                 _window.evaluate_js("""
                     document.getElementById('spinner').style.display='none';
                     document.getElementById('status').textContent='Server failed to start';
@@ -307,19 +332,17 @@ if __name__ == "__main__":
         except ImportError:
             logger.warning("pywebview not installed, falling back to browser")
             # Wait for server readiness then open browser
-            for _ in range(120):
-                try:
-                    urllib.request.urlopen(
-                        f"http://127.0.0.1:{settings.PORT}/health", timeout=1
-                    )
-                    break
-                except Exception:
-                    time.sleep(1)
+            _wait_for_server_ready()
             import webbrowser
             webbrowser.open(f"http://127.0.0.1:{settings.PORT}")
             server_thread.join()
         except Exception as exc:
             logger.error("pywebview error: %s\n%s", exc, traceback.format_exc())
+            logger.warning("Falling back to browser after pywebview failure")
+            _wait_for_server_ready()
+            import webbrowser
+            webbrowser.open(f"http://127.0.0.1:{settings.PORT}")
+            server_thread.join()
     else:
         uvicorn.run(
             "main:app",

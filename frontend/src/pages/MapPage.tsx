@@ -4,7 +4,8 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api, MapImage } from '../services/api'
 import { useFolder } from '../context/FolderContext'
-import { MapPin, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MapPin, X, ChevronLeft, ChevronRight, Film } from 'lucide-react'
+import VideoPlayer from '../components/VideoPlayer'
 
 // ── Clustering logic (pixel-space) ────────────────────────────────────────────
 interface Cluster {
@@ -149,11 +150,20 @@ function ImageLightbox({
         <div className="fixed inset-0 z-[10000] bg-black/90 flex items-center justify-center"
             onClick={onClose}>
             <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <img
-                    src={`/api/images/${img.id}/preview`}
-                    alt={img.filename}
-                    className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
-                />
+                {img.media_type === 'video' ? (
+                    <VideoPlayer
+                        key={img.id}
+                        imageId={img.id}
+                        autoPlay
+                        className="max-w-[90vw] max-h-[85vh] rounded-lg"
+                    />
+                ) : (
+                    <img
+                        src={`/api/images/${img.id}/preview`}
+                        alt={img.filename}
+                        className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+                    />
+                )}
                 {/* Info bar */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 rounded-b-lg">
                     <p className="text-white text-sm font-medium truncate">{img.filename}</p>
@@ -211,7 +221,7 @@ function ClusterPopup({
                 <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                     <div>
                         <h3 className="font-semibold text-gray-900 dark:text-white">
-                            {cluster.images.length} Photo{cluster.images.length !== 1 ? 's' : ''}
+                            {cluster.images.length} Item{cluster.images.length !== 1 ? 's' : ''}
                         </h3>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                             {cluster.lat.toFixed(4)}, {cluster.lng.toFixed(4)}
@@ -227,7 +237,7 @@ function ClusterPopup({
                             <button
                                 key={img.id}
                                 onClick={() => onImageClick(cluster.images, idx)}
-                                className="aspect-square rounded-lg overflow-hidden hover:ring-2 hover:ring-primary-500 transition-all"
+                                className="aspect-square rounded-lg overflow-hidden hover:ring-2 hover:ring-primary-500 transition-all relative"
                             >
                                 <img
                                     src={`/api/images/${img.id}/preview`}
@@ -235,6 +245,11 @@ function ClusterPopup({
                                     className="w-full h-full object-cover"
                                     loading="lazy"
                                 />
+                                {img.media_type === 'video' && (
+                                    <div className="absolute top-1 right-1 bg-black/70 rounded px-1 py-0.5">
+                                        <Film className="w-3 h-3 text-white" />
+                                    </div>
+                                )}
                             </button>
                         ))}
                     </div>
@@ -336,10 +351,10 @@ export default function MapPage() {
             <div className="flex-1 flex items-center justify-center">
                 <div className="text-center max-w-md px-6">
                     <MapPin className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No Geotagged Photos</h2>
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No Geotagged Media</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        None of the photos in the selected folders contain GPS location data.
-                        Photos taken with a smartphone or GPS-enabled camera will appear here.
+                        None of the media in the selected folders contain GPS location data.
+                        Photos and videos taken with a smartphone or GPS-enabled camera will appear here.
                     </p>
                 </div>
             </div>
@@ -352,7 +367,7 @@ export default function MapPage() {
             <div className="absolute top-3 right-3 z-[1000] bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl px-4 py-2 shadow-lg">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                     <MapPin className="w-4 h-4 inline-block mr-1 -mt-0.5" />
-                    {images.length} geotagged photo{images.length !== 1 ? 's' : ''}
+                    {images.length} geotagged item{images.length !== 1 ? 's' : ''}
                 </span>
             </div>
 

@@ -3,18 +3,24 @@ Image serving and preview generation API endpoints.
 """
 
 import asyncio
-import hashlib
 import io
 import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.media import (
+    RAW_EXTENSIONS,
+    generate_video_preview,
+    get_media_mime_type,
+    guess_media_type,
+    is_video_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +29,9 @@ router = APIRouter()
 # EXIF orientation tag number
 _ORIENTATION_TAG = 0x0112
 
-# RAW file extensions that need special handling
-RAW_EXTENSIONS = {'.nef', '.cr2', '.cr3', '.arw', '.raf', '.orf', '.rw2', '.dng', '.raw'}
-
 # Limit concurrent RAW processing to avoid memory spikes
 _raw_semaphore = asyncio.Semaphore(3)
+_video_semaphore = asyncio.Semaphore(2)
 
 
 def get_preview_path(image_id: str) -> Path:
@@ -73,6 +77,9 @@ def generate_preview(source_path: Path, preview_path: Path, max_size: int = 1600
     """Generate a preview image from source (sync, run via to_thread)."""
     try:
         ext = source_path.suffix.lower()
+
+        if is_video_path(source_path):
+            return generate_video_preview(source_path, preview_path, max_size)
 
         if ext in RAW_EXTENSIONS:
             img = open_raw_image(source_path)
@@ -145,7 +152,7 @@ def _generate_placeholder(preview_path: Path, filename: str) -> None:
 
 @router.get("/images/{image_id}/preview")
 async def get_image_preview(image_id: str):
-    """Get a preview (resized) version of an image."""
+    """Get a preview (resized) version of a media item."""
     db = await get_db()
     
     # Get image info from database
@@ -159,6 +166,7 @@ async def get_image_preview(image_id: str):
         raise HTTPException(status_code=404, detail="Image not found")
     
     source_path = Path(image["path"])
+    media_type = guess_media_type(source_path, image["media_type"])
     
     if not source_path.exists():
         raise HTTPException(status_code=404, detail="Image file not found on disk")
@@ -169,10 +177,16 @@ async def get_image_preview(image_id: str):
     if not preview_path.exists():
         ext = source_path.suffix.lower()
         is_raw = ext in RAW_EXTENSIONS
+        is_video = media_type == "video"
 
         # Throttle concurrent RAW processing
         if is_raw:
             async with _raw_semaphore:
+                success = await asyncio.to_thread(
+                    generate_preview, source_path, preview_path, settings.PREVIEW_MAX_SIZE
+                )
+        elif is_video:
+            async with _video_semaphore:
                 success = await asyncio.to_thread(
                     generate_preview, source_path, preview_path, settings.PREVIEW_MAX_SIZE
                 )
@@ -182,7 +196,7 @@ async def get_image_preview(image_id: str):
             )
 
         if not success:
-            if is_raw:
+            if is_raw or is_video:
                 # Generate a placeholder so we don't retry every request
                 await asyncio.to_thread(
                     _generate_placeholder, preview_path, image["filename"]
@@ -203,7 +217,7 @@ async def get_image_preview(image_id: str):
 
 @router.get("/images/{image_id}/full")
 async def get_image_full(image_id: str):
-    """Get the full-resolution original image."""
+    """Get the full-resolution original media file."""
     db = await get_db()
     
     cursor = await db.execute(
@@ -216,34 +230,43 @@ async def get_image_full(image_id: str):
         raise HTTPException(status_code=404, detail="Image not found")
     
     source_path = Path(image["path"])
+    media_type = guess_media_type(source_path, image["media_type"])
     
     if not source_path.exists():
         raise HTTPException(status_code=404, detail="Image file not found on disk")
-    
-    # Determine media type
-    format_map = {
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "png": "image/png",
-        "webp": "image/webp",
-        "gif": "image/gif",
-        "tif": "image/tiff",
-        "tiff": "image/tiff",
-        "heic": "image/heic",
-        "heif": "image/heif",
-        "nef": "image/x-nikon-nef",
-        "cr2": "image/x-canon-cr2",
-        "arw": "image/x-sony-arw",
-    }
-    
-    media_type = format_map.get(image["format"], "application/octet-stream")
-    
-    return FileResponse(source_path, media_type=media_type)
+
+    return FileResponse(source_path, media_type=get_media_mime_type(image["format"], media_type))
+
+
+@router.get("/images/{image_id}/stream")
+async def get_image_stream(image_id: str):
+    """Get a streamable version of a media file for browser playback."""
+    db = await get_db()
+
+    cursor = await db.execute(
+        "SELECT * FROM images WHERE id = ?",
+        (image_id,),
+    )
+    image = await cursor.fetchone()
+
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    source_path = Path(image["path"])
+    if not source_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found on disk")
+
+    media_type = guess_media_type(source_path, image["media_type"])
+    return FileResponse(
+        source_path,
+        media_type=get_media_mime_type(image["format"], media_type),
+        headers={"Accept-Ranges": "bytes"},
+    )
 
 
 @router.get("/images/{image_id}/info")
 async def get_image_info(image_id: str):
-    """Get metadata about an image."""
+    """Get metadata about a media item."""
     db = await get_db()
     
     cursor = await db.execute(
@@ -254,15 +277,29 @@ async def get_image_info(image_id: str):
     
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
-    
+
+    # Fetch tags
+    tag_cursor = await db.execute(
+        "SELECT t.name FROM image_tags it JOIN tags t ON t.id = it.tag_id WHERE it.image_id = ? ORDER BY t.name",
+        (image["id"],),
+    )
+    tag_rows = await tag_cursor.fetchall()
+
     return {
         "id": image["id"],
         "path": image["path"],
         "filename": image["filename"],
         "folder": image["folder"],
         "size": image["size"],
+        "media_type": image["media_type"] or guess_media_type(image["format"]),
         "width": image["width"],
         "height": image["height"],
+        "duration": image["duration"],
+        "fps": image["fps"],
+        "video_codec": image["video_codec"],
+        "audio_codec": image["audio_codec"],
+        "bitrate": image["bitrate"],
+        "has_audio": bool(image["has_audio"]),
         "format": image["format"],
         "mtime": image["mtime"],
         "exif_date": image["exif_date"],
@@ -271,6 +308,9 @@ async def get_image_info(image_id: str):
         "iso": image["iso"],
         "shutter_speed": image["shutter_speed"],
         "aperture": image["aperture"],
+        "exposure_program": image["exposure_program"],
+        "focal_length": image["focal_length"],
+        "tags": [r["name"] for r in tag_rows],
     }
 
 
@@ -383,7 +423,7 @@ async def open_in_editor(image_id: str, body: OpenInEditorRequest | None = None)
     import subprocess
 
     db = await get_db()
-    cursor = await db.execute("SELECT path FROM images WHERE id = ?", (image_id,))
+    cursor = await db.execute("SELECT path, format, media_type FROM images WHERE id = ?", (image_id,))
     image = await cursor.fetchone()
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -392,16 +432,33 @@ async def open_in_editor(image_id: str, body: OpenInEditorRequest | None = None)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
 
-    # Determine editor
-    editor = (body.editor if body else None) or None
-    if not editor or editor == "default":
-        # Check user setting
+    # Determine editor. An explicit "default" from the UI must bypass the saved
+    # editor setting so videos open in the OS default player instead of Affinity.
+    requested_editor = (body.editor if body else None) or None
+    if requested_editor:
+        editor = requested_editor
+    else:
         cur = await db.execute("SELECT value FROM settings WHERE key = 'editor_command'")
         row = await cur.fetchone()
         editor = row["value"] if row else "default"
 
     try:
         system = platform.system()
+        media_type = guess_media_type(image["format"], image["media_type"])
+        if editor == "photos":
+            if media_type == "video":
+                editor = "default"
+            else:
+            # Open in the system photo viewer (not the default file handler)
+                if system == "Windows":
+                    import urllib.parse
+                    photo_uri = f'ms-photos:viewer?fileName={urllib.parse.quote(str(file_path))}'
+                    os.startfile(photo_uri)  # noqa: S606
+                elif system == "Darwin":
+                    subprocess.Popen(["open", "-a", "Preview", str(file_path)])
+                else:
+                    subprocess.Popen(["xdg-open", str(file_path)])
+
         if editor == "default":
             # Use OS default handler
             if system == "Windows":

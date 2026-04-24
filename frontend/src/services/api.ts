@@ -33,6 +33,8 @@ export interface SessionResponse {
     created_at: string
 }
 
+export type MediaType = 'image' | 'video'
+
 export interface NextImageResponse {
     id: string
     path: string
@@ -40,18 +42,28 @@ export interface NextImageResponse {
     folder: string
     size: number
     format: string
+    media_type: MediaType
     width: number | null
     height: number | null
+    duration: number | null
+    fps: number | null
+    video_codec: string | null
+    audio_codec: string | null
+    bitrate: number | null
+    has_audio: boolean
     camera_make: string | null
     camera_model: string | null
     iso: number | null
     shutter_speed: string | null
     aperture: string | null
+    exposure_program: string | null
+    focal_length: string | null
     exif_date: string | null
     cursor_position: number
     total_images: number
     has_next: boolean
     has_previous: boolean
+    tags: string[]
 }
 
 export interface SessionQueueResponse {
@@ -94,6 +106,18 @@ export interface ActionsExecuteResponse {
 export interface ActionDeleteResponse {
     success: boolean
     processed: number
+    failed: number
+}
+
+export interface BatchDeleteResponse {
+    success: boolean
+    processed: number
+    failed: number
+}
+
+export interface BatchMoveResponse {
+    success: boolean
+    moved: number
     failed: number
 }
 
@@ -144,20 +168,30 @@ export interface BrowseImage {
     folder: string
     path: string
     format: string | null
+    media_type: MediaType
     size: number | null
     width: number | null
     height: number | null
+    duration: number | null
+    fps: number | null
+    video_codec: string | null
+    audio_codec: string | null
+    bitrate: number | null
+    has_audio: boolean
     camera_make: string | null
     camera_model: string | null
     iso: number | null
     shutter_speed: string | null
     aperture: string | null
+    exposure_program: string | null
+    focal_length: string | null
     star_rating: number
     color_label: string | null
     flag: string
     created_at: string | null
     latitude: number | null
     longitude: number | null
+    tags: string[]
 }
 
 export interface BrowseResponse {
@@ -192,6 +226,10 @@ export interface RegisteredFolder {
     added_at: string
     last_scanned_at: string | null
     image_count: number
+    is_favorite: boolean
+    color: string | null
+    sort_order: number
+    is_accessible?: boolean
 }
 
 export interface FolderListResponse {
@@ -209,10 +247,48 @@ export interface Collection {
     image_count: number
     created_at: string
     updated_at: string
+    is_favorite: boolean
+    color: string | null
 }
 
 export type ColorLabel = 'red' | 'yellow' | 'green' | 'blue' | 'purple'
 export type Flag = 'pick' | 'reject' | 'unflagged'
+
+// --- Tag types ---
+export interface TagOut {
+    id: number
+    name: string
+    usage_count: number
+}
+
+export interface ImageTagOut {
+    name: string
+    source: 'manual' | 'ai' | 'ai_object' | 'ai_object_wildlife' | 'exif' | 'ai_wildlife' | 'ai_food' | 'ai_scene' | 'ai_event'
+    confidence: number | null
+}
+
+export interface SuggestionOut {
+    name: string
+    source: 'manual' | 'ai' | 'ai_object' | 'ai_object_wildlife' | 'exif' | 'ai_wildlife' | 'ai_food' | 'ai_scene' | 'ai_event'
+    confidence: number
+    already_applied: boolean
+}
+
+export interface AiStatusOut {
+    available: boolean
+    downloading: boolean
+    progress: number | null
+    model_size_bytes: number | null
+}
+
+export interface TagPackOut {
+    id: string
+    name: string
+    description: string
+    source: string
+    tag_count: number
+    default_enabled: boolean
+}
 
 export interface StatsResponse {
     total_images: number
@@ -236,6 +312,8 @@ export interface CopyExportResponse {
     failed: number
 }
 
+export type CopyExportFormat = 'original' | 'jpeg' | 'png'
+
 export interface MoveKeptResponse {
     success: boolean
     moved: number
@@ -256,6 +334,7 @@ export interface MapImage {
     latitude: number
     longitude: number
     exif_date: string | null
+    media_type: MediaType
 }
 
 export interface MapResponse {
@@ -325,6 +404,14 @@ export interface UpdateCheckResponse {
 export interface UpdateApplyResponse {
     success: boolean
     message: string
+}
+
+export interface ReleaseInfo {
+    version: string
+    tag: string
+    release_notes: string | null
+    published_at: string | null
+    asset_size: number | null
 }
 
 async function fetchWithTimeout(
@@ -485,6 +572,24 @@ export const api = {
         return res.json()
     },
 
+    async batchDeleteImages(imageIds: string[]): Promise<BatchDeleteResponse> {
+        const res = await fetchWithTimeout(`${API_BASE}/actions/batch-delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_ids: imageIds }),
+        }, 120000)
+        return res.json()
+    },
+
+    async batchMoveImages(imageIds: string[], destination: string): Promise<BatchMoveResponse> {
+        const res = await fetchWithTimeout(`${API_BASE}/actions/batch-move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_ids: imageIds, destination }),
+        }, 120000)
+        return res.json()
+    },
+
     // Blur scan (async – returns task_id for polling)
     async scanBlur(folderPath?: string, force = false): Promise<{ task_id: string }> {
         const res = await fetchWithTimeout(`${API_BASE}/quality/blur/scan`, {
@@ -529,6 +634,11 @@ export const api = {
     // Get full image URL
     getFullUrl(imageId: string): string {
         return `${API_BASE}/images/${imageId}/full`
+    },
+
+    // Get stream URL for video playback
+    getStreamUrl(imageId: string): string {
+        return `${API_BASE}/images/${imageId}/stream`
     },
 
     // Reveal image in file explorer (opens folder with file selected)
@@ -578,6 +688,15 @@ export const api = {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ label }),
+        })
+        return res.json()
+    },
+
+    async updateFolder(folderId: string, updates: { label?: string; is_favorite?: boolean; color?: string | null }): Promise<RegisteredFolder> {
+        const res = await fetchWithTimeout(`${API_BASE}/folders/${folderId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
         })
         return res.json()
     },
@@ -657,7 +776,7 @@ export const api = {
         return res.json()
     },
 
-    async updateCollection(collectionId: string, data: { name?: string; description?: string; smart_rules?: Record<string, unknown> }): Promise<Collection> {
+    async updateCollection(collectionId: string, data: { name?: string; description?: string; smart_rules?: Record<string, unknown>; is_favorite?: boolean; color?: string | null }): Promise<Collection> {
         const res = await fetchWithTimeout(`${API_BASE}/collections/${collectionId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -705,6 +824,8 @@ export const api = {
         color_label?: string
         flag?: string
         collection_id?: string
+        tags_filter?: string
+        tags_mode?: 'any' | 'all'
     } = {}): Promise<BrowseResponse> {
         const qs = new URLSearchParams()
         if (params.folder) qs.set('folder', params.folder)
@@ -719,6 +840,8 @@ export const api = {
         if (params.color_label) qs.set('color_label', params.color_label)
         if (params.flag) qs.set('flag', params.flag)
         if (params.collection_id) qs.set('collection_id', params.collection_id)
+        if (params.tags_filter) qs.set('tags_filter', params.tags_filter)
+        if (params.tags_mode) qs.set('tags_mode', params.tags_mode)
         const res = await fetchWithTimeout(`${API_BASE}/browse?${qs.toString()}`)
         return res.json()
     },
@@ -766,11 +889,15 @@ export const api = {
     },
 
     // --- Copy/export ---
-    async copyImages(imageIds: string[], destination: string): Promise<CopyExportResponse> {
+    async copyImages(
+        imageIds: string[],
+        destination: string,
+        format: CopyExportFormat = 'original'
+    ): Promise<CopyExportResponse> {
         const res = await fetchWithTimeout(`${API_BASE}/actions/copy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image_ids: imageIds, destination }),
+            body: JSON.stringify({ image_ids: imageIds, destination, format }),
         })
         return res.json()
     },
@@ -851,6 +978,94 @@ export const api = {
         return res.json()
     },
 
+    // --- Tags ---
+    async getImageTags(imageId: string): Promise<ImageTagOut[]> {
+        const res = await fetchWithTimeout(`${API_BASE}/images/${imageId}/tags`)
+        return res.json()
+    },
+
+    async addImageTag(
+        imageId: string,
+        tag: { name: string; source?: string; confidence?: number }
+    ): Promise<ImageTagOut> {
+        const res = await fetchWithTimeout(`${API_BASE}/images/${imageId}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: tag.name, source: tag.source || 'manual', confidence: tag.confidence }),
+        })
+        return res.json()
+    },
+
+    async removeImageTag(imageId: string, tagName: string): Promise<void> {
+        await fetchWithTimeout(`${API_BASE}/images/${imageId}/tags/${encodeURIComponent(tagName)}`, {
+            method: 'DELETE',
+        })
+    },
+
+    async listTags(params: { q?: string; limit?: number } = {}): Promise<TagOut[]> {
+        const qs = new URLSearchParams()
+        if (params.q) qs.set('q', params.q)
+        if (params.limit !== undefined) qs.set('limit', String(params.limit))
+        const res = await fetchWithTimeout(`${API_BASE}/tags?${qs.toString()}`)
+        return res.json()
+    },
+
+    async getTagSuggestions(imageId: string): Promise<SuggestionOut[]> {
+        const res = await fetchWithTimeout(`${API_BASE}/tags/suggestions/${imageId}`)
+        return res.json()
+    },
+
+    async getAiStatus(): Promise<AiStatusOut> {
+        const res = await fetchWithTimeout(`${API_BASE}/tags/ai-status`)
+        return res.json()
+    },
+
+    async triggerAiDownload(): Promise<{ status: string }> {
+        const res = await fetchWithTimeout(`${API_BASE}/tags/ai-download`, { method: 'POST' })
+        return res.json()
+    },
+
+    async deleteAiModel(): Promise<{ status: string }> {
+        const res = await fetchWithTimeout(`${API_BASE}/tags/ai-model`, { method: 'DELETE' })
+        return res.json()
+    },
+
+    async listTagPacks(): Promise<TagPackOut[]> {
+        const res = await fetchWithTimeout(`${API_BASE}/tags/packs`)
+        return res.json()
+    },
+
+    async batchAddTags(imageIds: string[], tags: string[]): Promise<{ updated: number; tags: string[] }> {
+        const res = await fetchWithTimeout(`${API_BASE}/images/batch/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_ids: imageIds, tags }),
+        })
+        return res.json()
+    },
+
+    async batchRemoveTags(imageIds: string[], tags: string[]): Promise<{ updated: number; tags: string[] }> {
+        const res = await fetchWithTimeout(`${API_BASE}/images/batch/tags`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_ids: imageIds, tags }),
+        })
+        return res.json()
+    },
+
+    async renameTag(tagId: number, name: string): Promise<TagOut> {
+        const res = await fetchWithTimeout(`${API_BASE}/tags/${tagId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        })
+        return res.json()
+    },
+
+    async deleteTag(tagId: number): Promise<void> {
+        await fetchWithTimeout(`${API_BASE}/tags/${tagId}`, { method: 'DELETE' })
+    },
+
     // --- Updates ---
     async checkForUpdate(): Promise<UpdateCheckResponse> {
         const res = await fetchWithTimeout(`${API_BASE}/update/check`, {}, 20000)
@@ -861,6 +1076,11 @@ export const api = {
         const res = await fetchWithTimeout(`${API_BASE}/update/apply`, {
             method: 'POST',
         }, 300000) // 5 min timeout for download + extract
+        return res.json()
+    },
+
+    async getUpdateHistory(): Promise<ReleaseInfo[]> {
+        const res = await fetchWithTimeout(`${API_BASE}/update/history`, {}, 20000)
         return res.json()
     },
 }

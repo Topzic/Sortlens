@@ -42,6 +42,14 @@ class UpdateApplyResponse(BaseModel):
     message: str
 
 
+class ReleaseInfo(BaseModel):
+    version: str
+    tag: str
+    release_notes: str | None = None
+    published_at: str | None = None
+    asset_size: int | None = None
+
+
 def _parse_version(v: str) -> tuple[int, ...]:
     """Parse a version string like '0.1.0' or 'v0.1.0' into a comparable tuple."""
     v = v.lstrip("vV")
@@ -94,6 +102,43 @@ async def check_for_update():
         release_notes=data.get("body"),
         asset_size=asset_size,
     )
+
+
+@router.get("/history", response_model=list[ReleaseInfo])
+async def get_release_history():
+    """Fetch all releases from GitHub (most recent first)."""
+    api_url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases"
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                api_url,
+                headers={"Accept": "application/vnd.github+json"},
+                params={"per_page": 50},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        logger.warning("Failed to fetch release history: %s", exc)
+        return []
+
+    releases: list[ReleaseInfo] = []
+    for release in data:
+        tag = release.get("tag_name", "")
+        version = tag.lstrip("vV")
+        asset_size = None
+        for asset in release.get("assets", []):
+            if ASSET_PATTERN.match(asset["name"]):
+                asset_size = asset["size"]
+                break
+        releases.append(ReleaseInfo(
+            version=version,
+            tag=tag,
+            release_notes=release.get("body"),
+            published_at=release.get("published_at"),
+            asset_size=asset_size,
+        ))
+    return releases
 
 
 @router.post("/apply", response_model=UpdateApplyResponse)

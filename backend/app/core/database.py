@@ -38,6 +38,15 @@ async def init_db():
     """Initialize the database schema."""
     db = await get_db()
 
+    # Migration: if image_tags exists without tag_id (old schema), drop it and tags so they are recreated fresh
+    cursor = await db.execute("PRAGMA table_info(image_tags)")
+    it_columns = {row[1] for row in await cursor.fetchall()}
+    if it_columns and "tag_id" not in it_columns:
+        logger.info("Detected old image_tags schema — dropping image_tags and tags for migration")
+        await db.execute("DROP TABLE IF EXISTS image_tags")
+        await db.execute("DROP TABLE IF EXISTS tags")
+        await db.commit()
+
     # Create tables
     await db.executescript(
         """
@@ -52,6 +61,13 @@ async def init_db():
             width INTEGER,
             height INTEGER,
             format TEXT,
+            media_type TEXT DEFAULT 'image',
+            duration REAL,
+            fps REAL,
+            video_codec TEXT,
+            audio_codec TEXT,
+            bitrate INTEGER,
+            has_audio INTEGER DEFAULT 0,
             sha1_quick TEXT,
             exif_date TEXT,
             camera_make TEXT,
@@ -59,6 +75,8 @@ async def init_db():
             iso INTEGER,
             shutter_speed TEXT,
             aperture TEXT,
+            exposure_program TEXT,
+            focal_length TEXT,
             star_rating INTEGER DEFAULT 0,
             color_label TEXT,
             flag TEXT DEFAULT 'unflagged',
@@ -168,6 +186,25 @@ async def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- Tags registry (global unique tags)
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Image-tag junction (many-to-many)
+        CREATE TABLE IF NOT EXISTS image_tags (
+            image_id TEXT NOT NULL,
+            tag_id INTEGER NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            confidence REAL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (image_id, tag_id),
+            FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        );
+
         -- Create indexes for common queries (only columns guaranteed to exist)
         CREATE INDEX IF NOT EXISTS idx_images_folder ON images(folder);
         CREATE INDEX IF NOT EXISTS idx_images_format ON images(format);
@@ -187,12 +224,30 @@ async def init_db():
         await db.execute("ALTER TABLE images ADD COLUMN camera_make TEXT")
     if "camera_model" not in columns:
         await db.execute("ALTER TABLE images ADD COLUMN camera_model TEXT")
+    if "media_type" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN media_type TEXT DEFAULT 'image'")
+    if "duration" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN duration REAL")
+    if "fps" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN fps REAL")
+    if "video_codec" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN video_codec TEXT")
+    if "audio_codec" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN audio_codec TEXT")
+    if "bitrate" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN bitrate INTEGER")
+    if "has_audio" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN has_audio INTEGER DEFAULT 0")
     if "iso" not in columns:
         await db.execute("ALTER TABLE images ADD COLUMN iso INTEGER")
     if "shutter_speed" not in columns:
         await db.execute("ALTER TABLE images ADD COLUMN shutter_speed TEXT")
     if "aperture" not in columns:
         await db.execute("ALTER TABLE images ADD COLUMN aperture TEXT")
+    if "exposure_program" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN exposure_program TEXT")
+    if "focal_length" not in columns:
+        await db.execute("ALTER TABLE images ADD COLUMN focal_length TEXT")
     if "latitude" not in columns:
         await db.execute("ALTER TABLE images ADD COLUMN latitude REAL")
     if "longitude" not in columns:
@@ -204,16 +259,38 @@ async def init_db():
     if "flag" not in columns:
         await db.execute("ALTER TABLE images ADD COLUMN flag TEXT DEFAULT 'unflagged'")
 
+    # Migration: add folder customization columns
+    folder_cursor = await db.execute("PRAGMA table_info(folders)")
+    folder_columns = {row[1] for row in await folder_cursor.fetchall()}
+    if "is_favorite" not in folder_columns:
+        await db.execute("ALTER TABLE folders ADD COLUMN is_favorite INTEGER DEFAULT 0")
+    if "color" not in folder_columns:
+        await db.execute("ALTER TABLE folders ADD COLUMN color TEXT")
+    if "sort_order" not in folder_columns:
+        await db.execute("ALTER TABLE folders ADD COLUMN sort_order INTEGER DEFAULT 0")
+
+    # Migration: add collection customization columns
+    coll_cursor = await db.execute("PRAGMA table_info(collections)")
+    coll_columns = {row[1] for row in await coll_cursor.fetchall()}
+    if "is_favorite" not in coll_columns:
+        await db.execute("ALTER TABLE collections ADD COLUMN is_favorite INTEGER DEFAULT 0")
+    if "color" not in coll_columns:
+        await db.execute("ALTER TABLE collections ADD COLUMN color TEXT")
+
     # Create indexes on columns that may have been added by migration above
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_star_rating ON images(star_rating)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_color_label ON images(color_label)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_flag ON images(flag)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_images_media_type ON images(media_type)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_rating_label ON images(star_rating, color_label)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_filename ON images(filename)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_exif_date ON images(exif_date)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_images_geo ON images(latitude, longitude)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_duplicate_groups_hash ON duplicate_groups(group_hash)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_image_tags_image ON image_tags(image_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_image_tags_tag ON image_tags(tag_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name)")
 
     await db.commit()
     logger.info("Database initialized at %s", settings.DATABASE_PATH)

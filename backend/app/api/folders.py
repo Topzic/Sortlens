@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.image_metadata import extract_image_metadata
+from app.core.media import extract_media_metadata
 
 router = APIRouter()
 
@@ -59,6 +59,10 @@ class RegisteredFolder(BaseModel):
     added_at: str | None = None
     last_scanned_at: str | None = None
     image_count: int
+    is_favorite: bool = False
+    color: str | None = None
+    sort_order: int = 0
+    is_accessible: bool = True
 
 
 class FolderAddRequest(BaseModel):
@@ -67,7 +71,9 @@ class FolderAddRequest(BaseModel):
 
 
 class FolderUpdateRequest(BaseModel):
-    label: str
+    label: str | None = None
+    is_favorite: bool | None = None
+    color: str | None = None
 
 
 class FolderListResponse(BaseModel):
@@ -80,8 +86,8 @@ def get_folder_id(path: str) -> str:
     return hashlib.sha256(path.encode()).hexdigest()[:16]
 
 
-def is_image_file(filename: str) -> bool:
-    """Check if a file is a supported image format."""
+def is_media_file(filename: str) -> bool:
+    """Check if a file is a supported image or video format."""
     name = filename.lower()
     if name.startswith("._"):
         return False
@@ -90,19 +96,19 @@ def is_image_file(filename: str) -> bool:
     return name.endswith(settings.SUPPORTED_FORMATS)
 
 
-def scan_folder_for_images(folder_path: Path) -> list[dict]:
-    """Recursively scan a folder for image files (sync, run via to_thread)."""
+def scan_folder_for_media(folder_path: Path) -> list[dict]:
+    """Recursively scan a folder for supported media files."""
     images = []
 
     for root, _, files in os.walk(folder_path):
         for filename in files:
-            if is_image_file(filename):
+            if is_media_file(filename):
                 filepath = Path(root) / filename
                 try:
                     stat = filepath.stat()
                     ext = filepath.suffix.lower().lstrip(".")
                     img_id = hashlib.sha256(str(filepath).encode()).hexdigest()[:16]
-                    metadata = extract_image_metadata(filepath)
+                    metadata = extract_media_metadata(filepath)
 
                     images.append({
                         "id": img_id,
@@ -120,13 +126,69 @@ def scan_folder_for_images(folder_path: Path) -> list[dict]:
                         "iso": metadata["iso"],
                         "shutter_speed": metadata["shutter_speed"],
                         "aperture": metadata["aperture"],
+                        "exposure_program": metadata["exposure_program"],
+                        "focal_length": metadata["focal_length"],
+                        "media_type": metadata["media_type"],
                         "latitude": metadata.get("latitude"),
                         "longitude": metadata.get("longitude"),
+                        "duration": metadata.get("duration"),
+                        "fps": metadata.get("fps"),
+                        "video_codec": metadata.get("video_codec"),
+                        "audio_codec": metadata.get("audio_codec"),
+                        "bitrate": metadata.get("bitrate"),
+                        "has_audio": 1 if metadata.get("has_audio") else 0,
                     })
                 except (OSError, PermissionError):
                     continue
 
     return images
+
+
+def _media_row_values(img: dict) -> tuple:
+    return (
+        img["id"],
+        img["path"],
+        img["filename"],
+        img["folder"],
+        img["mtime"],
+        img["size"],
+        img["format"],
+        img.get("media_type", "image"),
+        img["width"],
+        img["height"],
+        img["exif_date"],
+        img["camera_make"],
+        img["camera_model"],
+        img["iso"],
+        img["shutter_speed"],
+        img["aperture"],
+        img.get("exposure_program"),
+        img.get("focal_length"),
+        img.get("latitude"),
+        img.get("longitude"),
+        img.get("duration"),
+        img.get("fps"),
+        img.get("video_codec"),
+        img.get("audio_codec"),
+        img.get("bitrate"),
+        img.get("has_audio", 0),
+    )
+
+
+async def _upsert_scanned_media(db, images: list[dict]) -> None:
+    if not images:
+        return
+
+    await db.executemany(
+        """
+        INSERT OR REPLACE INTO images
+            (id, path, filename, folder, mtime, size, format, media_type, width, height, exif_date, camera_make,
+               camera_model, iso, shutter_speed, aperture, exposure_program, focal_length, latitude, longitude, duration, fps, video_codec,
+             audio_codec, bitrate, has_audio, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        [_media_row_values(img) for img in images],
+    )
 
 
 @router.post("/folders/validate", response_model=FolderValidateResponse)
@@ -147,10 +209,10 @@ async def validate_folder(request: FolderValidateRequest):
         )
 
     # Run the sync scan in a thread so we don't block the event loop
-    images = await asyncio.to_thread(scan_folder_for_images, path)
+    images = await asyncio.to_thread(scan_folder_for_media, path)
     total_size = sum(img["size"] for img in images)
 
-    logger.info("Validated folder %s: %d images, %d bytes", path, len(images), total_size)
+    logger.info("Validated folder %s: %d media files, %d bytes", path, len(images), total_size)
 
     return FolderValidateResponse(
         valid=True, path=str(path.resolve()), image_count=len(images),
@@ -160,7 +222,7 @@ async def validate_folder(request: FolderValidateRequest):
 
 @router.post("/folders/scan", response_model=FolderScanResponse)
 async def scan_folder(request: FolderScanRequest):
-    """Scan a folder and index all images into the database."""
+    """Scan a folder and index all supported media into the database."""
     path = Path(request.path)
 
     if not path.exists() or not path.is_dir():
@@ -170,12 +232,12 @@ async def scan_folder(request: FolderScanRequest):
     folder_id = get_folder_id(resolved_path)
 
     # Run sync file-system scan in a thread
-    images = await asyncio.to_thread(scan_folder_for_images, path)
+    images = await asyncio.to_thread(scan_folder_for_media, path)
 
     if not images:
         return FolderScanResponse(
             success=True, folder_id=folder_id, path=resolved_path,
-            image_count=0, message="No images found in folder",
+            image_count=0, message="No supported media found in folder",
         )
 
     # Store in database
@@ -187,25 +249,7 @@ async def scan_folder(request: FolderScanRequest):
         (f"{resolved_path}%",)
     )
 
-    # Batch insert using executemany
-    rows = [
-        (
-            img["id"], img["path"], img["filename"], img["folder"],
-            img["mtime"], img["size"], img["format"],
-            img["width"], img["height"], img["exif_date"],
-            img["camera_make"], img["camera_model"], img["iso"], img["shutter_speed"],
-            img["aperture"], img.get("latitude"), img.get("longitude"),
-        )
-        for img in images
-    ]
-    await db.executemany(
-        """
-        INSERT OR REPLACE INTO images
-            (id, path, filename, folder, mtime, size, format, width, height, exif_date, camera_make, camera_model, iso, shutter_speed, aperture, latitude, longitude, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """,
-        rows,
-    )
+    await _upsert_scanned_media(db, images)
     await db.commit()
 
     # Save the current folder in settings
@@ -219,11 +263,11 @@ async def scan_folder(request: FolderScanRequest):
     )
     await db.commit()
 
-    logger.info("Scanned folder %s: indexed %d images", resolved_path, len(images))
+    logger.info("Scanned folder %s: indexed %d media files", resolved_path, len(images))
 
     return FolderScanResponse(
         success=True, folder_id=folder_id, path=resolved_path,
-        image_count=len(images), message=f"Successfully indexed {len(images)} images",
+        image_count=len(images), message=f"Successfully indexed {len(images)} media files",
     )
 
 
@@ -279,7 +323,7 @@ async def list_folders():
     """List all registered folders with image counts."""
     db = await get_db()
     cursor = await db.execute(
-        "SELECT id, path, label, added_at, last_scanned_at, image_count FROM folders ORDER BY added_at DESC"
+        "SELECT id, path, label, added_at, last_scanned_at, image_count, is_favorite, color, sort_order FROM folders ORDER BY added_at DESC"
     )
     rows = await cursor.fetchall()
 
@@ -301,6 +345,10 @@ async def list_folders():
                 added_at=row["added_at"],
                 last_scanned_at=row["last_scanned_at"],
                 image_count=live_count,
+                is_favorite=bool(row["is_favorite"]),
+                color=row["color"],
+                sort_order=row["sort_order"] or 0,
+                is_accessible=Path(row["path"]).exists(),
             )
         )
 
@@ -332,8 +380,8 @@ async def add_folder(request: FolderAddRequest):
     if existing:
         raise HTTPException(status_code=409, detail="Folder already registered")
 
-    # Scan images
-    images = await asyncio.to_thread(scan_folder_for_images, path)
+    # Scan media
+    images = await asyncio.to_thread(scan_folder_for_media, path)
 
     # Register folder
     await db.execute(
@@ -341,26 +389,9 @@ async def add_folder(request: FolderAddRequest):
         (folder_id, resolved_path, label, len(images)),
     )
 
-    # Index images
+    # Index media
     if images:
-        rows = [
-            (
-                img["id"], img["path"], img["filename"], img["folder"],
-                img["mtime"], img["size"], img["format"],
-                img["width"], img["height"], img["exif_date"],
-                img["camera_make"], img["camera_model"], img["iso"], img["shutter_speed"],
-                img["aperture"],
-            )
-            for img in images
-        ]
-        await db.executemany(
-            """
-            INSERT OR REPLACE INTO images
-                (id, path, filename, folder, mtime, size, format, width, height, exif_date, camera_make, camera_model, iso, shutter_speed, aperture, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            rows,
-        )
+        await _upsert_scanned_media(db, images)
 
     # Set as current folder
     await db.execute(
@@ -373,7 +404,7 @@ async def add_folder(request: FolderAddRequest):
     )
     await db.commit()
 
-    logger.info("Added folder %s: indexed %d images", resolved_path, len(images))
+    logger.info("Added folder %s: indexed %d media files", resolved_path, len(images))
 
     return RegisteredFolder(
         id=folder_id,
@@ -419,7 +450,20 @@ async def remove_folder(folder_id: str):
 
     folder_path = row["path"]
 
-    # Remove images belonging to this folder (CASCADE will clean collection_members)
+    # Remove dependent rows first (FK constraints without CASCADE)
+    await db.execute(
+        "DELETE FROM decisions WHERE image_id IN (SELECT id FROM images WHERE folder LIKE ?)",
+        (f"{folder_path}%",),
+    )
+    await db.execute(
+        "DELETE FROM quality_scores WHERE image_id IN (SELECT id FROM images WHERE folder LIKE ?)",
+        (f"{folder_path}%",),
+    )
+    await db.execute(
+        "DELETE FROM duplicate_group_members WHERE image_id IN (SELECT id FROM images WHERE folder LIKE ?)",
+        (f"{folder_path}%",),
+    )
+    # Remove images (CASCADE will clean collection_members)
     await db.execute("DELETE FROM images WHERE folder LIKE ?", (f"{folder_path}%",))
     # Safety net: clean up any orphaned collection_members
     await db.execute("DELETE FROM collection_members WHERE image_id NOT IN (SELECT id FROM images)")
@@ -457,30 +501,25 @@ async def rescan_folder(folder_id: str):
     if not path.exists() or not path.is_dir():
         raise HTTPException(status_code=400, detail="Folder path no longer exists")
 
-    images = await asyncio.to_thread(scan_folder_for_images, path)
+    images = await asyncio.to_thread(scan_folder_for_media, path)
 
-    # Clear old images for this folder and re-insert
+    # Clear dependent rows first (FK constraints), then old images
+    await db.execute(
+        "DELETE FROM decisions WHERE image_id IN (SELECT id FROM images WHERE folder LIKE ?)",
+        (f"{folder_path}%",),
+    )
+    await db.execute(
+        "DELETE FROM quality_scores WHERE image_id IN (SELECT id FROM images WHERE folder LIKE ?)",
+        (f"{folder_path}%",),
+    )
+    await db.execute(
+        "DELETE FROM duplicate_group_members WHERE image_id IN (SELECT id FROM images WHERE folder LIKE ?)",
+        (f"{folder_path}%",),
+    )
     await db.execute("DELETE FROM images WHERE folder LIKE ?", (f"{folder_path}%",))
 
     if images:
-        rows = [
-            (
-                img["id"], img["path"], img["filename"], img["folder"],
-                img["mtime"], img["size"], img["format"],
-                img["width"], img["height"], img["exif_date"],
-                img["camera_make"], img["camera_model"], img["iso"], img["shutter_speed"],
-                img["aperture"], img.get("latitude"), img.get("longitude"),
-            )
-            for img in images
-        ]
-        await db.executemany(
-            """
-            INSERT OR REPLACE INTO images
-                (id, path, filename, folder, mtime, size, format, width, height, exif_date, camera_make, camera_model, iso, shutter_speed, aperture, latitude, longitude, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            rows,
-        )
+        await _upsert_scanned_media(db, images)
 
     await db.execute(
         "UPDATE folders SET last_scanned_at = CURRENT_TIMESTAMP, image_count = ? WHERE id = ?",
@@ -488,7 +527,7 @@ async def rescan_folder(folder_id: str):
     )
     await db.commit()
 
-    logger.info("Rescanned folder %s: %d images", folder_path, len(images))
+    logger.info("Rescanned folder %s: %d media files", folder_path, len(images))
 
     return RegisteredFolder(
         id=folder_id,
@@ -529,22 +568,53 @@ async def open_folder_in_explorer(folder_id: str):
 
 @router.put("/folders/{folder_id}", response_model=RegisteredFolder)
 async def update_folder(folder_id: str, request: FolderUpdateRequest):
-    """Update folder label."""
+    """Update folder label, favorite status, or color."""
     db = await get_db()
 
-    cursor = await db.execute("SELECT path, image_count, added_at, last_scanned_at FROM folders WHERE id = ?", (folder_id,))
+    cursor = await db.execute(
+        "SELECT path, label, image_count, added_at, last_scanned_at, is_favorite, color, sort_order FROM folders WHERE id = ?",
+        (folder_id,),
+    )
     row = await cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Folder not found")
 
-    await db.execute("UPDATE folders SET label = ? WHERE id = ?", (request.label, folder_id))
+    updates: list[str] = []
+    params: list = []
+
+    if request.label is not None:
+        updates.append("label = ?")
+        params.append(request.label)
+    if request.is_favorite is not None:
+        updates.append("is_favorite = ?")
+        params.append(1 if request.is_favorite else 0)
+    if request.color is not None:
+        # Allow "" or "none" to clear color
+        updates.append("color = ?")
+        params.append(request.color if request.color not in ("", "none") else None)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    params.append(folder_id)
+    await db.execute(f"UPDATE folders SET {', '.join(updates)} WHERE id = ?", params)
     await db.commit()
+
+    # Re-fetch to return current state
+    cursor = await db.execute(
+        "SELECT path, label, image_count, added_at, last_scanned_at, is_favorite, color, sort_order FROM folders WHERE id = ?",
+        (folder_id,),
+    )
+    updated = await cursor.fetchone()
 
     return RegisteredFolder(
         id=folder_id,
-        path=row["path"],
-        label=request.label,
-        added_at=row["added_at"],
-        last_scanned_at=row["last_scanned_at"],
-        image_count=row["image_count"],
+        path=updated["path"],
+        label=updated["label"] or Path(updated["path"]).name,
+        added_at=updated["added_at"],
+        last_scanned_at=updated["last_scanned_at"],
+        image_count=updated["image_count"],
+        is_favorite=bool(updated["is_favorite"]),
+        color=updated["color"],
+        sort_order=updated["sort_order"] or 0,
     )

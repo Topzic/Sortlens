@@ -19,8 +19,10 @@ class SettingsPayload(BaseModel):
     prefetch_count: int | None = None
     undo_depth: int | None = None
     scan_batch_size: int | None = None
+    enable_yolo: bool | None = None
     theme: str | None = None                  # system | dark | light
     editor_command: str | None = None         # "default" | custom exe path
+    enabled_tag_packs: str | None = None      # comma-separated pack IDs
 
 
 @router.get("/settings")
