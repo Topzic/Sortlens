@@ -11,7 +11,7 @@
 ;   3. Open this file in Inno Setup Compiler and click Build
 
 #define MyAppName "Sortlens"
-#define MyAppVersion "0.7.0"
+#define MyAppVersion "0.8.0"
 #define MyAppPublisher "Sortlens"
 #define MyAppURL "https://sortlens.app"
 #define MyAppExeName "Sortlens.exe"

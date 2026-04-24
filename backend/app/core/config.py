@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # App info
     APP_NAME: str = "Sortlens"
-    VERSION: str = "0.7.0"
+    VERSION: str = "0.8.0"
     DEBUG: bool = True
 
     # Server

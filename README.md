@@ -6,7 +6,7 @@
 
 Sort, rate, tag, and organize your photo library — entirely offline, no subscriptions, no cloud.
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.8.0-blue)]()
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)]()
 [![License](https://img.shields.io/badge/license-Proprietary-orange)]()
 
@@ -257,7 +257,7 @@ No. The AI models (YOLO and CLIP) run on your CPU. A modern multi-core processor
 
 ## Version
 
-**Current Release: v0.7.0**
+**Current Release: v0.8.0**
 
 ---
 
