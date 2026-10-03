@@ -24,33 +24,69 @@ Whether you're coming back from a shoot with 2,000 images or managing a growing 
 
 ## Screenshots
 
-### Browse
+### macOS
+
+#### Browse
 
 ![Browse](docs/screenshots/browse.png)
 
-### Dashboard
+#### Dashboard
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
-### For You
+#### For You
 
 ![For You](docs/screenshots/for-you.png)
 
-### Map
+#### Map
 
 ![Map](docs/screenshots/map.png)
 
-### Swipe
+#### Swipe
 
 ![Swipe](docs/screenshots/swipe.png)
 
-### AI & Tagging
+#### AI & Tagging
 
 ![AI and Tagging](docs/screenshots/ai-tagging.png)
 
-### Collections
+#### Collections
 
 ![Collections](docs/screenshots/collections.png)
+
+### iOS
+
+#### Library, dark mode
+
+<img src="docs/screenshots/ios-library-dark.jpg" alt="Library, dark mode" width="320" />
+
+#### Library, light mode
+
+<img src="docs/screenshots/ios-library-light.jpg" alt="Library, light mode" width="320" />
+
+#### For You
+
+<img src="docs/screenshots/ios-for-you.jpg" alt="For You" width="320" />
+
+#### Albums
+
+<img src="docs/screenshots/ios-albums.png" alt="Albums" width="320" />
+
+#### Map
+
+<img src="docs/screenshots/ios-map.jpg" alt="Map" width="320" />
+
+#### Stats
+
+<img src="docs/screenshots/ios-stats.png" alt="Stats" width="320" />
+
+#### Swipe
+
+<img src="docs/screenshots/ios-swipe.jpg" alt="Swipe" width="320" />
+
+#### Search
+
+<img src="docs/screenshots/ios-search.png" alt="Search" width="320" />
 
 ---
 
