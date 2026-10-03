@@ -52,12 +52,17 @@ jobs:
       - name: Zip the installer
         shell: pwsh
         run: |
-          $exe = 'installer\output\SortlensSetup-0.9.0.exe'
+          $iss = Get-Content installer\sortlens_installer.iss -Raw
+          if ($iss -notmatch 'MyAppVersion "([0-9]+\.[0-9]+\.[0-9]+)"') { throw 'Could not read the app version.' }
+          $version = $Matches[1]
+          $exe = "installer\output\SortlensSetup-$version.exe"
           if (-not (Test-Path $exe)) { throw "Missing $exe" }
-          Compress-Archive -Path $exe -DestinationPath installer\output\SortlensSetup-0.9.0.zip -Force
+          $zip = "installer\output\SortlensSetup-$version.zip"
+          Compress-Archive -Path $exe -DestinationPath $zip -Force
+          Write-Host "Created $zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SortlensSetup-0.9.0
-          path: installer/output/SortlensSetup-0.9.0.zip
+          name: SortlensSetup
+          path: installer/output/SortlensSetup-*.zip
           if-no-files-found: error
