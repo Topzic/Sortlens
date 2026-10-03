@@ -6,8 +6,8 @@
 
 Sort, rate, tag, and organize your photo library — entirely offline, no subscriptions, no cloud.
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue)]()
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)]()
+[![Version](https://img.shields.io/badge/version-0.9.0-blue)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)]()
 [![License](https://img.shields.io/badge/license-Proprietary-orange)]()
 
 [Download Latest Release](https://github.com/Topzic/Sortlens/releases/latest)
@@ -26,6 +26,8 @@ Whether you're coming back from a shoot with 2,000 images or managing a growing 
 
 ## Installation
 
+### Windows
+
 1. **Download** the latest `SortlensSetup-x.x.x.zip` from the [Releases page](https://github.com/Topzic/Sortlens/releases/latest)
 2. **Extract** the zip to get the installer exe
 3. **Run** `SortlensSetup-x.x.x.exe` and follow the setup wizard
@@ -33,11 +35,28 @@ Whether you're coming back from a shoot with 2,000 images or managing a growing 
 5. **Add a folder** — click the ➕ in the sidebar to add a folder of photos
 6. Start sorting!
 
-The installer automatically includes the required VC++ Redistributable and WebView2 Runtime if they are not already present on your system.
+The Windows installer includes the VC++ Redistributable and WebView2 Runtime if they are not already on the computer.
+
+### macOS (Apple Silicon)
+
+1. **Download** the latest `Sortlens-x.x.x-macOS.dmg` from the [Releases page](https://github.com/Topzic/Sortlens/releases/latest)
+2. **Open** the disk image
+3. **Drag** Sortlens into Applications
+4. **Open** Sortlens. The first time, if macOS blocks the app, right-click it, choose **Open**, then **Open** again
+5. **Add a folder** and start sorting
+
+The macOS download is built for Apple Silicon (M1 or later).
+
+### Moving A Library From Windows To macOS
+
+1. On Windows, open Settings > Library Data and export the database
+2. On macOS, import that JSON backup from Settings > Library Data
+3. Open Settings > Library Health and remap each missing folder to its new macOS location
+4. Review the external editor setting, since a Windows `.exe` path will not carry over to macOS
 
 ### System Requirements
 
-- Windows 10 or later (64-bit)
+- Windows 10 or later (64-bit), or macOS 12 or later on Apple Silicon
 - 4 GB RAM minimum (8 GB recommended for large libraries)
 - No internet connection required (except for optional AI model downloads)
 
@@ -233,10 +252,10 @@ Sortlens is built with safety-first defaults:
 ## FAQ
 
 **Q: Do I need to install anything else?**
-No. The Sortlens installer handles everything — it bundles the required VC++ Redistributable and WebView2 Runtime.
+On Windows, no. The installer bundles the VC++ Redistributable and WebView2 Runtime. On macOS, open the disk image and drag Sortlens to Applications.
 
 **Q: Where is my data stored?**
-Your library database and settings are stored in `C:\Users\<YourName>\.sortlens\`. Your actual photos are never moved or modified unless you explicitly choose to delete, move, or copy them.
+Your library database and settings are stored in `C:\Users\<YourName>\.sortlens\` on Windows and `~/.sortlens/` on macOS. Your actual photos are never moved or modified unless you explicitly choose to delete, move, or copy them.
 
 **Q: Can I use this with RAW files?**
 Yes. Sortlens supports NEF, CR2, CR3, ARW, RAF, ORF, RW2, and DNG. It reads the embedded preview and full EXIF data from RAW files.
@@ -257,7 +276,16 @@ No. The AI models (YOLO and CLIP) run on your CPU. A modern multi-core processor
 
 ## Version
 
-**Current Release: v0.7.0**
+**Current Release: v0.9.0**
+
+### Release history
+
+| Version | Notes |
+| ------- | ----- |
+| v0.9.0  | Official macOS download for Apple Silicon, rebuilt Windows installer, and removal of machine-specific network settings from the desktop app. |
+| v0.8.1  | Fixed folder scans and rescans failing after media metadata fields were expanded. |
+| v0.8.0  | Video support, tagging, AI suggestions, and library organization. |
+| Earlier | See the [Releases page](https://github.com/Topzic/Sortlens/releases). |
 
 ---
 
