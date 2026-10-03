@@ -6,7 +6,7 @@
 
 Sort, rate, tag, and organize your photo library — entirely offline, no subscriptions, no cloud.
 
-[![Version](https://img.shields.io/badge/version-0.10.0-blue)]()
+[![Version](https://img.shields.io/badge/version-0.9.0-blue)]()
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)]()
 [![License](https://img.shields.io/badge/license-Proprietary-orange)]()
 
@@ -204,8 +204,6 @@ Monitor the health of your library:
 - **External editor** — Open images in your preferred editor
 - **AI tags** — Enable/disable YOLO detection, download/remove CLIP model, toggle vocabulary packs
 - **Themes** — Light, Dark, and Dark+ modes
-- **Accounts** — Each person can keep a separate library and a Tailscale address. This computer’s original library stays in place
-- **Setup** — First launch walks through the library, an optional photo folder, and a Tailscale connection test
 - **Release history** — Check for updates and view release notes from within the app
 
 ---
@@ -278,13 +276,12 @@ No. The AI models (YOLO and CLIP) run on your CPU. A modern multi-core processor
 
 ## Version
 
-**Current Release: v0.10.0**
+**Current Release: v0.9.0**
 
 ### Release history
 
 | Version | Notes |
 | ------- | ----- |
-| v0.10.0 | Separate libraries for each account, first-run setup, and a Tailscale connection test. The original library on this computer stays in place. |
 | v0.9.0  | Official macOS download for Apple Silicon, rebuilt Windows installer, and removal of machine-specific network settings from the desktop app. |
 | v0.8.1  | Fixed folder scans and rescans failing after media metadata fields were expanded. |
 | v0.8.0  | Video support, tagging, AI suggestions, and library organization. |
