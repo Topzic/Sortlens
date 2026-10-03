@@ -56,37 +56,48 @@ Whether you're coming back from a shoot with 2,000 images or managing a growing 
 
 ### iOS
 
-#### Library, dark mode
-
-<img src="docs/screenshots/ios-library-dark.jpg" alt="Library, dark mode" width="320" />
-
-#### Library, light mode
-
-<img src="docs/screenshots/ios-library-light.jpg" alt="Library, light mode" width="320" />
-
-#### For You
-
-<img src="docs/screenshots/ios-for-you.jpg" alt="For You" width="320" />
-
-#### Albums
-
-<img src="docs/screenshots/ios-albums.png" alt="Albums" width="320" />
-
-#### Map
-
-<img src="docs/screenshots/ios-map.jpg" alt="Map" width="320" />
-
-#### Stats
-
-<img src="docs/screenshots/ios-stats.png" alt="Stats" width="320" />
-
-#### Swipe
-
-<img src="docs/screenshots/ios-swipe.jpg" alt="Swipe" width="320" />
-
-#### Search
-
-<img src="docs/screenshots/ios-search.png" alt="Search" width="320" />
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Library, dark mode</strong><br><br>
+      <img src="docs/screenshots/ios-library-dark.jpg" alt="Library, dark mode" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <strong>Library, light mode</strong><br><br>
+      <img src="docs/screenshots/ios-library-light.jpg" alt="Library, light mode" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>For You</strong><br><br>
+      <img src="docs/screenshots/ios-for-you.jpg" alt="For You" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <strong>Albums</strong><br><br>
+      <img src="docs/screenshots/ios-albums.png" alt="Albums" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Map</strong><br><br>
+      <img src="docs/screenshots/ios-map.jpg" alt="Map" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <strong>Stats</strong><br><br>
+      <img src="docs/screenshots/ios-stats.png" alt="Stats" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Swipe</strong><br><br>
+      <img src="docs/screenshots/ios-swipe.jpg" alt="Swipe" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <strong>Search</strong><br><br>
+      <img src="docs/screenshots/ios-search.png" alt="Search" width="100%" />
+    </td>
+  </tr>
+</table>
 
 ---
 
