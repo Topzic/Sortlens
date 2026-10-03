@@ -22,6 +22,36 @@ Sortlens is a desktop photo management tool built for photographers who need to 
 
 Whether you're coming back from a shoot with 2,000 images or managing a growing library of 50,000+, Sortlens helps you sort the keepers from the rejects fast.
 
+## Screenshots
+
+### Browse
+
+![Browse](docs/screenshots/browse.png)
+
+### Dashboard
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### For You
+
+![For You](docs/screenshots/for-you.png)
+
+### Map
+
+![Map](docs/screenshots/map.png)
+
+### Swipe
+
+![Swipe](docs/screenshots/swipe.png)
+
+### AI & Tagging
+
+![AI and Tagging](docs/screenshots/ai-tagging.png)
+
+### Collections
+
+![Collections](docs/screenshots/collections.png)
+
 ---
 
 ## Installation
