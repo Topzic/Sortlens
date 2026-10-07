@@ -357,8 +357,7 @@ No. The AI models (YOLO and CLIP) run on your CPU. A modern multi-core processor
 
 Current release: **[v0.11.0](https://github.com/Topzic/Sortlens/releases/latest)**
 
-Full version history is on the [Releases page](https://github.com/Topzic/Sortlens/releases). The in-app Settings → Updates screen loads that same history.
-
+Full version history lives in [`CHANGELOG.md`](./CHANGELOG.md) and is published on the [Releases page](https://github.com/Topzic/Sortlens/releases). The in-app Settings → Updates screen loads that same GitHub history.
 
 ---
 
